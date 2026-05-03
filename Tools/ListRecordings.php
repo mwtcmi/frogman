@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class ListRecordings extends AbstractTool {
-	public function name() { return 'oc_list_recordings'; }
+	public function name() { return 'fm_list_recordings'; }
 	public function description() { return 'List system recordings. Shows custom recordings by default. Optional: type ("all" to include built-in sounds, "builtin" for built-in only).'; }
 	public function validate($params) { return true; }
 	public function requiredPermission() { return null; }

@@ -270,12 +270,12 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 
 			// Add warning emoji for destructive actions
 			$destructiveTools = [
-				'oc_disable_extension', 'oc_delete_ringgroup', 'oc_remove_inbound_route',
-				'oc_remove_blacklist', 'oc_remove_misc_dest', 'oc_delete_ivr',
-				'oc_delete_time_condition', 'oc_dialplan_remove', 'oc_delete_saved_query',
-				'oc_delete_notification', 'oc_module_uninstall', 'oc_stop',
-				'oc_clear_followme', 'oc_clear_call_forward', 'oc_disable_voicemail',
-				'oc_disable_trunk', 'oc_delete_api_token', 'oc_revoke_api_token',
+				'fm_disable_extension', 'fm_delete_ringgroup', 'fm_remove_inbound_route',
+				'fm_remove_blacklist', 'fm_remove_misc_dest', 'fm_delete_ivr',
+				'fm_delete_time_condition', 'fm_dialplan_remove', 'fm_delete_saved_query',
+				'fm_delete_notification', 'fm_module_uninstall', 'fm_stop',
+				'fm_clear_followme', 'fm_clear_call_forward', 'fm_disable_voicemail',
+				'fm_disable_trunk', 'fm_delete_api_token', 'fm_revoke_api_token',
 			];
 			$isDestructive = in_array($toolName, $destructiveTools);
 			if ($isDestructive) {
@@ -288,7 +288,7 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 
 		// Format based on tool
 		switch ($toolName) {
-			case 'oc_list_extensions':
+			case 'fm_list_extensions':
 				if (empty($data['extensions'])) {
 					return "No extensions found.";
 				}
@@ -298,7 +298,7 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 				}
 				return implode("\n", $lines);
 
-			case 'oc_get_extension':
+			case 'fm_get_extension':
 				$u = $data['user'] ?? [];
 				$d = $data['device'] ?? [];
 				return "**Extension {$data['extension']}**\n"
@@ -308,7 +308,7 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 					. "  Call Waiting: " . ($u['callwaiting'] ?? 'n/a') . "\n"
 					. "  Voicemail: " . ($u['voicemail'] ?? 'n/a');
 
-			case 'oc_get_extension_health':
+			case 'fm_get_extension_health':
 				$reg = $data['registered'] ? 'Registered' : 'Not registered';
 				return "**Health: Extension {$data['extension']}** ({$data['name']})\n"
 					. "  Configured: Yes\n"
@@ -316,7 +316,7 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 					. "  Registration: {$reg}\n"
 					. "  Recent calls: {$data['recent_call_count']}";
 
-			case 'oc_list_active_calls':
+			case 'fm_list_active_calls':
 				if (empty($data['calls'])) {
 					return "No active calls.";
 				}
@@ -326,7 +326,7 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 				}
 				return implode("\n", $lines);
 
-			case 'oc_get_cdr':
+			case 'fm_get_cdr':
 				if (empty($data['records'])) {
 					return "No CDR records found.";
 				}
@@ -336,7 +336,7 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 				}
 				return implode("\n", $lines);
 
-			case 'oc_list_trunks':
+			case 'fm_list_trunks':
 				if (empty($data['trunks'])) {
 					return "No trunks configured.";
 				}
@@ -347,7 +347,7 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 				}
 				return implode("\n", $lines);
 
-			case 'oc_list_ringgroups':
+			case 'fm_list_ringgroups':
 				if (empty($data['ringgroups'])) {
 					return "No ring groups configured.";
 				}
@@ -357,7 +357,7 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 				}
 				return implode("\n", $lines);
 
-			case 'oc_get_ringgroup':
+			case 'fm_get_ringgroup':
 				$memberLinks = [];
 				foreach ($data['members'] ?? [] as $m) {
 					$ext = preg_replace('/[^0-9]/', '', $m);
@@ -369,10 +369,10 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 					. "  Ring time: {$data['grptime']}s\n"
 					. "  Members ({$data['member_count']}): {$members}";
 
-			case 'oc_reload':
+			case 'fm_reload':
 				return $data['message'] ?? 'Reload complete.';
 
-			case 'oc_module_list':
+			case 'fm_module_list':
 				if (empty($data['modules'])) return "No modules found.";
 				$upgCount = $data['upgrades_available'] ?? 0;
 				$grouped = ['Commercial' => [], 'GPLv2' => [], 'GPLv3+' => [], 'AGPLv3' => [], 'Other' => []];
@@ -400,7 +400,7 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 				}
 				return implode("\n", $lines);
 
-			case 'oc_audit_search':
+			case 'fm_audit_search':
 				if (empty($data['entries'])) {
 					return "No audit entries found.";
 				}
@@ -412,7 +412,7 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 				return implode("\n", $lines);
 
 
-			case 'oc_dialplan_show':
+			case 'fm_dialplan_show':
 				if (empty($data['contexts'])) {
 					return "No custom dialplan contexts found in extensions_custom.conf.";
 				}
@@ -423,7 +423,7 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 				}
 				return implode("\n", $lines);
 
-			case 'oc_dialplan_get_context':
+			case 'fm_dialplan_get_context':
 				$lines = ["**Context [{$data['name']}]:**", '```'];
 				foreach ($data['lines'] as $line) {
 					$lines[] = $line;
@@ -431,14 +431,14 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 				$lines[] = '```';
 				return implode("\n", $lines);
 
-			case 'oc_dialplan_templates':
+			case 'fm_dialplan_templates':
 				$lines = ["**Dialplan Templates:**"];
 				foreach ($data['templates'] as $t) {
 					$lines[] = "  **{$t['name']}** (`{$t['id']}`) — {$t['description']}";
 				}
 				return implode("\n", $lines);
 
-			case 'oc_dialplan_apply':
+			case 'fm_dialplan_apply':
 				if (!empty($data['dialplan'])) {
 					return "**Preview — {$data['context']}:**\n```\n{$data['dialplan']}\n```\n{{cmd:yes|✅ Yes}} {{cmd:no|❌ No}}";
 				}
@@ -448,7 +448,7 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 				}
 				return $msg;
 
-			case 'oc_dialplan_remove':
+			case 'fm_dialplan_remove':
 				return $data['message'] ?? 'Context removed.';
 
 			case "oc_list_misc_dests":
@@ -463,7 +463,7 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 ", $lines);
 
 
-			case 'oc_list_inbound_routes':
+			case 'fm_list_inbound_routes':
 				if (empty($data['routes'])) return "No inbound routes configured.";
 				$lines = ["**Inbound Routes** ({$data['count']}):"];
 				foreach ($data['routes'] as $r) {
@@ -472,7 +472,7 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 				}
 				return implode("\n", $lines);
 
-			case 'oc_list_outbound_routes':
+			case 'fm_list_outbound_routes':
 				if (empty($data['routes'])) return "No outbound routes configured.";
 				$lines = ["**Outbound Routes** ({$data['count']}):"];
 				foreach ($data['routes'] as $r) {
@@ -480,11 +480,11 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 				}
 				return implode("\n", $lines);
 
-			case 'oc_get_outbound_route':
+			case 'fm_get_outbound_route':
 				$name = $data['name'] ?? 'unknown';
 				return "**Outbound Route {$data['route_id']}** — {$name}\nTrunks: " . count($data['trunks'] ?? []) . "\nPatterns: " . count($data['patterns'] ?? []);
 
-			case 'oc_list_queues':
+			case 'fm_list_queues':
 				if (empty($data['queues'])) return "No queues configured.";
 				$lines = ["**Queues** ({$data['count']}):"];
 				foreach ($data['queues'] as $q) {
@@ -492,13 +492,13 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 				}
 				return implode("\n", $lines);
 
-			case 'oc_get_queue':
+			case 'fm_get_queue':
 				$ext = $data['extension'] ?? $data['account'] ?? '?';
 				$name = $data['descr'] ?? $data['name'] ?? '';
 				$members = $data['dynamic_members'] ?? [];
 				return "**Queue {$ext}** — {$name}\n  Strategy: " . ($data['strategy'] ?? 'n/a') . "\n  Timeout: " . ($data['timeout'] ?? 'n/a') . "s\n  Dynamic members: " . count($members);
 
-			case 'oc_list_time_conditions':
+			case 'fm_list_time_conditions':
 				if (empty($data['time_conditions'])) return "No time conditions configured.";
 				$lines = ["**Time Conditions** ({$data['count']}):"];
 				foreach ($data['time_conditions'] as $tc) {
@@ -508,17 +508,17 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 				}
 				return implode("\n", $lines);
 
-			case 'oc_get_call_forward':
+			case 'fm_get_call_forward':
 				$ext = $data['extension'];
 				$cf = $data['call_forward'] ?? 'none';
 				$cfb = $data['call_forward_busy'] ?? 'none';
 				$cfu = $data['call_forward_unavailable'] ?? 'none';
 				return "**Call Forward — Ext {$ext}**\n  All calls: {$cf}\n  When busy: {$cfb}\n  Unavailable: {$cfu}";
 
-			case 'oc_get_dnd':
+			case 'fm_get_dnd':
 				return "**DND on {$data['extension']}:** {$data['dnd']}";
 
-			case 'oc_list_blacklist':
+			case 'fm_list_blacklist':
 				if (empty($data['blacklist'])) return "Blacklist is empty.";
 				$lines = ["**Blacklist** ({$data['count']}):"];
 				foreach ($data['blacklist'] as $b) {
@@ -527,7 +527,7 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 				}
 				return implode("\n", $lines);
 
-			case 'oc_list_daynight':
+			case 'fm_list_daynight':
 				if (empty($data['call_flows'])) return "No day/night call flows configured.";
 				$lines = ["**Day/Night Call Flows** ({$data['count']}):"];
 				foreach ($data['call_flows'] as $f) {
@@ -535,7 +535,7 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 				}
 				return implode("\n", $lines);
 
-			case 'oc_list_voicemail':
+			case 'fm_list_voicemail':
 				if (!empty($data['settings'])) {
 					$lines = ["**Voicemail Settings** ({$data['count']}):"];
 					foreach ($data['settings'] as $k => $v) {
@@ -551,13 +551,13 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 				}
 				return implode("\n", $lines);
 
-			case 'oc_get_voicemail':
+			case 'fm_get_voicemail':
 				$ext = $data['mailbox'] ?? $data['extension'] ?? '?';
 				$newm = $data['new_messages'] ?? 0;
 				$oldm = $data['old_messages'] ?? 0;
 				return "**Voicemail {$ext}**\n  New messages: {$newm}\n  Old messages: {$oldm}\n  Email: " . ($data['email'] ?? 'none');
 
-			case 'oc_list_conferences':
+			case 'fm_list_conferences':
 				if (empty($data['conferences'])) return "No conference rooms configured.";
 				$lines = ["**Conferences** ({$data['count']}):"];
 				foreach ($data['conferences'] as $c) {
@@ -565,12 +565,12 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 				}
 				return implode("\n", $lines);
 
-			case 'oc_get_conference':
+			case 'fm_get_conference':
 				$ext = $data['exten'] ?? '?';
 				$name = $data['name'] ?? '';
 				return "**Conference {$ext}** — {$name}\n  Pin: " . ($data['pin'] ?? 'none') . "\n  Admin Pin: " . ($data['adminpin'] ?? 'none');
 
-			case 'oc_list_paging':
+			case 'fm_list_paging':
 				if (empty($data['paging_groups'])) return "No paging groups configured.";
 				$lines = ["**Paging Groups** ({$data['count']}):"];
 				foreach ($data['paging_groups'] as $p) {
@@ -578,7 +578,7 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 				}
 				return implode("\n", $lines);
 
-			case 'oc_list_parking':
+			case 'fm_list_parking':
 				$lots = $data['lots'] ?? [];
 				$parked = $data['parked_calls'] ?? [];
 				if (empty($lots)) return "No parking lots configured.";
@@ -588,7 +588,7 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 				}
 				return implode("\n", $lines);
 
-			case 'oc_list_ivrs':
+			case 'fm_list_ivrs':
 				if (empty($data['ivrs'])) return "No IVRs configured.";
 				$lines = ["**IVRs** ({$data['count']}):"];
 				foreach ($data['ivrs'] as $i) {
@@ -597,12 +597,12 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 				}
 				return implode("\n", $lines);
 
-			case 'oc_get_ivr':
+			case 'fm_get_ivr':
 				$name = $data['name'] ?? '';
 				$id = $data['id'] ?? '?';
 				return "**IVR {$id}** — {$name}\n  Timeout: " . ($data['timeout'] ?? 'n/a') . "s";
 
-			case 'oc_list_announcements':
+			case 'fm_list_announcements':
 				if (empty($data['announcements'])) return "No announcements configured.";
 				$lines = ["**Announcements** ({$data['count']}):"];
 				foreach ($data['announcements'] as $a) {
@@ -610,7 +610,7 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 				}
 				return implode("\n", $lines);
 
-			case 'oc_list_feature_codes':
+			case 'fm_list_feature_codes':
 				if (empty($data['feature_codes'])) return "No feature codes found.";
 				$enabled = array_filter($data['feature_codes'], function($fc) { return $fc['enabled']; });
 				$disabled = array_filter($data['feature_codes'], function($fc) { return !$fc['enabled']; });
@@ -634,7 +634,7 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 				}
 				return implode("\n", $lines);
 
-			case 'oc_list_recordings':
+			case 'fm_list_recordings':
 				$builtin = $data['builtin_count'] ?? 0;
 				if (empty($data['recordings'])) {
 					return "No custom recordings found.\n📦 {$builtin} built-in Asterisk sounds available. {{cmd:list all recordings|Show all (verbose)}}";
@@ -646,7 +646,7 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 				$lines[] = "\n📦 {$builtin} built-in Asterisk sounds also available. {{cmd:list all recordings|Show all (verbose)}}";
 				return implode("\n", $lines);
 
-			case 'oc_list_moh':
+			case 'fm_list_moh':
 				if (empty($data['categories'])) return "No music on hold categories.";
 				$lines = ["**Music on Hold** ({$data['count']}):"];
 				foreach ($data['categories'] as $c) {
@@ -654,7 +654,7 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 				}
 				return implode("\n", $lines);
 
-			case 'oc_get_firewall_status':
+			case 'fm_get_firewall_status':
 				$ids = $data['intrusion_detection'] ?? 'unknown';
 				$lines = ["**Firewall Status:**"];
 				$lines[] = "  🛡️ Intrusion Detection: `{$ids}`";
@@ -669,7 +669,7 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 				}
 				return implode("\n", $lines);
 
-			case 'oc_get_asterisk_info':
+			case 'fm_get_asterisk_info':
 				$lines = ["**Asterisk Info:**"];
 				if (!empty($data['version'])) $lines[] = "  📦 Version: `{$data['version']}`";
 				if (!empty($data['uptime'])) {
@@ -680,7 +680,7 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 				if (isset($data['registered_endpoints'])) $lines[] = "  📞 Registered endpoints: {$data['registered_endpoints']}";
 				return implode("\n", $lines);
 
-			case 'oc_get_sip_settings':
+			case 'fm_get_sip_settings':
 				$lines = ["**SIP Settings:**"];
 				$lines[] = "  📡 Driver: `{$data['sip_driver']}`" ?? 'unknown';
 				if (!empty($data['external_ip'])) $lines[] = "  🌐 External IP: `{$data['external_ip']}`";
@@ -699,7 +699,7 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 				}
 				return implode("\n", $lines);
 
-			case 'oc_get_trunk_status':
+			case 'fm_get_trunk_status':
 				$t = $data['trunk'] ?? [];
 				$name = $t['name'] ?? 'unknown';
 				$tech = $t['tech'] ?? '?';
@@ -707,7 +707,7 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 				return "**Trunk {$t['trunkid']}** — {$name} ({$tech})\n  Registration: {$reg}";
 
 
-			case 'oc_diagnose_extension':
+			case 'fm_diagnose_extension':
 				$checks = $data['checks'] ?? [];
 				$cfg = $checks['extension_config'] ?? [];
 				$name = $cfg['name'] ?? 'Unknown';
@@ -773,7 +773,7 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 
 				return implode("\n", $lines);
 
-			case 'oc_diagnose_trunk':
+			case 'fm_diagnose_trunk':
 				$trunk = $data['trunk'] ?? [];
 				$name = $trunk['name'] ?? 'Unknown';
 				$tid = $data['trunk_id'];
@@ -839,7 +839,7 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 
 				return implode("\n", $lines);
 
-			case 'oc_pjsip_endpoint_details':
+			case 'fm_pjsip_endpoint_details':
 				$lines = ["**PJSIP Endpoint: {$data['endpoint']}**"];
 				$p = $data['parsed'] ?? [];
 				if (!empty($p['callerid'])) $lines[] = "  Caller ID: {$p['callerid']}";
@@ -856,7 +856,7 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 				if (!empty($q['Response'])) $lines[] = "  Qualify: {$q['Response']} — " . ($q['Message'] ?? '');
 				return implode("\n", $lines);
 
-			case 'oc_pjsip_show_channels':
+			case 'fm_pjsip_show_channels':
 				if ($data['channel_count'] === 0) {
 					return "No active PJSIP channels.";
 				}
@@ -866,7 +866,7 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 				}
 				return implode("\n", $lines);
 
-			case 'oc_sip_trace':
+			case 'fm_sip_trace':
 				$d = $data;
 				$traceStatus = $d['status'] ?? null;
 				if ($traceStatus === 'started') {
@@ -894,7 +894,7 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 				$running = $d['running'] ? 'Yes' : 'No';
 				return "**SIP Trace Status:** Running: {$running} | Captured: {$d['capture_size_bytes']} bytes";
 
-			case 'oc_list_filestores':
+			case 'fm_list_filestores':
 				$locs = $data['locations']['locations'] ?? [];
 				$types = $data['locations']['filestoreTypes'] ?? [];
 				$total = 0;
@@ -920,7 +920,7 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 				}
 				return implode("\n", $lines);
 
-			case 'oc_get_license_info':
+			case 'fm_get_license_info':
 				$activated = !empty($data['activated']);
 				$actIcon = $activated ? '🟢' : '🔴';
 				$actLabel = $activated ? 'Active' : 'Not Activated';
@@ -989,7 +989,7 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 				}
 				return implode("\n", $lines);
 
-			case 'oc_update_activation':
+			case 'fm_update_activation':
 				$lic = $data['license'] ?? [];
 				$lines = ["✅ **{$data['message']}**"];
 
@@ -1057,7 +1057,7 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 
 				return implode("\n", $lines);
 
-			case 'oc_module_status':
+			case 'fm_module_status':
 				$name = $data['display_name'] ?? $data['name'] ?? '?';
 				$rawName = $data['name'] ?? '?';
 				$version = $data['version'] ?? '?';
@@ -1089,7 +1089,7 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 				if ($desc) $lines[] = "\n  {$desc}";
 				return implode("\n", $lines);
 
-			case 'oc_get_mcp_config':
+			case 'fm_get_mcp_config':
 				$ip = $data['ip'] ?? 'YOUR_PBX_IP';
 				$path = $data['mcp_server'] ?? '';
 				$lines = ["🔌 **Frogman Connection Guide**"];
@@ -1106,7 +1106,7 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 				$lines[] = "\nGenerate a token: `create token for mybot with read`";
 				return implode("\n", $lines);
 
-			case 'oc_create_api_token':
+			case 'fm_create_api_token':
 				$lines = ["🔑 **{$data['message']}**"];
 				if (!empty($data['token'])) {
 					$lines[] = "\n**Token:** `{$data['token']}`";
@@ -1116,7 +1116,7 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 				}
 				return implode("\n", $lines);
 
-			case 'oc_list_api_tokens':
+			case 'fm_list_api_tokens':
 				if (empty($data['tokens'])) return "No API tokens created.";
 				$lines = ["🔑 **API Tokens** ({$data['count']}):"];
 				foreach ($data['tokens'] as $t) {
@@ -1130,13 +1130,13 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 				}
 				return implode("\n", $lines);
 
-			case 'oc_export':
+			case 'fm_export':
 				if (empty($data['file']) && empty($data['url'])) {
 					return "📥 No data to export for **{$data['type']}**.";
 				}
 				return "📥 **Export ready:** {{download:{$data['url']}|{$data['filename']}}} ({$data['count']} rows)";
 
-			case 'oc_list_callbacks':
+			case 'fm_list_callbacks':
 				if (empty($data['callbacks'])) return "No callbacks configured.";
 				$lines = ["**Callbacks** ({$data['count']}):"];
 				foreach ($data['callbacks'] as $cb) {
@@ -1145,7 +1145,7 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 				}
 				return implode("\n", $lines);
 
-			case 'oc_list_cid_lookup':
+			case 'fm_list_cid_lookup':
 				if (empty($data['sources'])) return "No CID lookup sources configured.";
 				$lines = ["**CID Lookup Sources** ({$data['count']}):"];
 				foreach ($data['sources'] as $s) {
@@ -1153,12 +1153,12 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 				}
 				return implode("\n", $lines);
 
-			case 'oc_get_call_waiting':
+			case 'fm_get_call_waiting':
 				$status = $data['call_waiting'] ?? 'unknown';
 				$icon = $status === 'enabled' ? '🟢' : '⚪';
 				return "{$icon} **Call Waiting on {$data['extension']}:** {$status}";
 
-			case 'oc_list_recording_rules':
+			case 'fm_list_recording_rules':
 				if (empty($data['rules'])) return "No call recording rules configured.";
 				$lines = ["**Call Recording Rules** ({$data['count']}):"];
 				foreach ($data['rules'] as $r) {
@@ -1166,7 +1166,7 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 				}
 				return implode("\n", $lines);
 
-			case 'oc_list_calendars':
+			case 'fm_list_calendars':
 				if (empty($data['calendars'])) return "No calendars configured.";
 				$lines = ["**Calendars** ({$data['count']}):"];
 				foreach ($data['calendars'] as $c) {
@@ -1175,7 +1175,7 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 				}
 				return implode("\n", $lines);
 
-			case 'oc_get_announcement':
+			case 'fm_get_announcement':
 				$desc = $data['description'] ?? '';
 				$id = $data['announcement_id'] ?? $data['id'] ?? '?';
 				$recording = $data['recording_id'] ?? 'none';
@@ -1185,7 +1185,7 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 				$lines[] = "  ➡️ After: {$dest}";
 				return implode("\n", $lines);
 
-			case 'oc_list_allowlist':
+			case 'fm_list_allowlist':
 				if (empty($data['allowlist'])) return "Allowlist is empty.";
 				$lines = ["**Allowlist** ({$data['count']}):"];
 				foreach ($data['allowlist'] as $a) {
@@ -1194,7 +1194,7 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 				}
 				return implode("\n", $lines);
 
-			case 'oc_list_contacts':
+			case 'fm_list_contacts':
 				if (!empty($data['contacts'])) {
 					$lines = ["**Contacts in Group {$data['group_id']}** ({$data['count']}):"];
 					foreach ($data['contacts'] as $c) {
@@ -1211,7 +1211,7 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 				}
 				return implode("\n", $lines);
 
-			case 'oc_list_speed_dials':
+			case 'fm_list_speed_dials':
 				if (empty($data['speed_dials'])) return "No speed dials configured.";
 				$lines = ["**Speed Dials** ({$data['count']}):"];
 				foreach ($data['speed_dials'] as $d) {
@@ -1219,7 +1219,7 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 				}
 				return implode("\n", $lines);
 
-			case 'oc_get_route_patterns':
+			case 'fm_get_route_patterns':
 				$name = $data['name'] ?? '?';
 				$patterns = $data['patterns'] ?? [];
 				$trunks = $data['trunks'] ?? [];
@@ -1249,7 +1249,7 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 				}
 				return implode("\n", $lines);
 
-			case 'oc_list_all_dids':
+			case 'fm_list_all_dids':
 				if (empty($data['dids'])) return "No DIDs found.";
 				$lines = ["**All DIDs** ({$data['count']}):"];
 				foreach ($data['dids'] as $d) {
@@ -1260,7 +1260,7 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 				}
 				return implode("\n", $lines);
 
-			case 'oc_get_pm2_status':
+			case 'fm_get_pm2_status':
 				if (empty($data['processes'])) return "No PM2 processes running.";
 				$lines = ["**Services** ({$data['count']}):"];
 				foreach ($data['processes'] as $p) {
@@ -1275,7 +1275,7 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 				}
 				return implode("\n", $lines);
 
-			case 'oc_validate':
+			case 'fm_validate':
 				$result = trim($data['result'] ?? '');
 				if (stripos($result, 'root user') !== false) {
 					return "🛡️ **Security Scan**\n\n  This scan requires root access. Run from CLI:\n  `fwconsole validate`";
@@ -1291,7 +1291,7 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 				}
 				return "🛡️ **Security Scan Complete**\n\n  {$result}";
 
-			case 'oc_list_notifications':
+			case 'fm_list_notifications':
 				// Single notification detail view
 				if (!empty($data['single'])) {
 					$levelIcons = ['error' => '🔴', 'warning' => '🟡', 'update' => '🔵', 'notice' => '💬', 'critical' => '🚨', 'security' => '🔒'];
@@ -1344,11 +1344,11 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 				}
 				return implode("\n", $lines);
 
-			case 'oc_get_external_ip':
+			case 'fm_get_external_ip':
 				$ip = trim($data['output'] ?? $data['ip'] ?? 'unknown');
 				return "**External IP:** `{$ip}`";
 
-			case 'oc_extension_states':
+			case 'fm_extension_states':
 				if (empty($data['extensions'])) return "No extensions found.";
 				$lines = ["**Extension States** ({$data['count']}):"];
 				foreach ($data['extensions'] as $e) {
@@ -1364,7 +1364,7 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 				}
 				return implode("\n", $lines);
 
-			case 'oc_list_certificates':
+			case 'fm_list_certificates':
 				if (empty($data['certificates'])) return "No certificates found.";
 				$lines = ["**Certificates** ({$data['count']}):"];
 				foreach ($data['certificates'] as $c) {
@@ -1377,7 +1377,7 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 				}
 				return implode("\n", $lines);
 
-			case 'oc_system_dashboard':
+			case 'fm_system_dashboard':
 				$lines = ["📊 **System Status**"];
 				if (!empty($data['version'])) $lines[] = "  📦 Asterisk `{$data['version']}`";
 				if (!empty($data['uptime'])) {
@@ -1404,7 +1404,7 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 				}
 				return implode("\n", $lines);
 
-			case 'oc_search':
+			case 'fm_search':
 				if (empty($data['results'])) return "No results for **{$data['query']}**.";
 				$lines = ["🔍 **Search: {$data['query']}** ({$data['count']} results):"];
 				$cmdMap = [
@@ -1421,7 +1421,7 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 				}
 				return implode("\n", $lines);
 
-			case 'oc_trace_call_flow':
+			case 'fm_trace_call_flow':
 				if (!empty($data['error'])) {
 					return "📞 **Call Flow Trace**\n\n  {$data['error']}";
 				}
@@ -1506,7 +1506,7 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 
 				return "📞 **Call Flow Trace**\n\n```mermaid\n{$mermaid}```";
 
-			case 'oc_search_docs':
+			case 'fm_search_docs':
 				if (empty($data['results'])) return "📚 No articles found for **{$data['query']}**. Try different keywords.";
 				$lines = ["📚 **Knowledge Base: {$data['query']}** ({$data['count']} articles):"];
 				foreach ($data['results'] as $r) {
@@ -1537,7 +1537,7 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 				}
 				return implode("\n", $lines);
 
-			case 'oc_pjsip_registrations':
+			case 'fm_pjsip_registrations':
 				$inbound = preg_replace('/Privilege:\s+\w+\s*/i', '', $data['inbound'] ?? '');
 				$outbound = preg_replace('/Privilege:\s+\w+\s*/i', '', $data['outbound'] ?? '');
 				$inbound = trim($inbound);
@@ -1549,19 +1549,19 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 				$lines[] = "  📡 Outbound (trunks): " . ($noOut ? 'None registered' : $outbound);
 				return implode("\n", $lines);
 
-			case 'oc_pjsip_qualify':
+			case 'fm_pjsip_qualify':
 				$ep = $data['endpoint'] ?? '?';
 				$msg = $data['result']['Message'] ?? 'No response';
 				return "📡 **Qualify {$ep}:** {$msg}";
 
-			case 'oc_queue_status':
+			case 'fm_queue_status':
 				$r = $data['result'] ?? [];
 				if (!empty($r['Message'])) {
 					return "**Queue Status:** {$r['Message']}";
 				}
 				return "**Queue Status:** No data available.";
 
-			case 'oc_list_permissions':
+			case 'fm_list_permissions':
 				if (empty($data['permissions'])) return "No permissions configured. All users have default read access.";
 				$lines = ["**Permissions** ({$data['count']}):"];
 				foreach ($data['permissions'] as $p) {
@@ -1570,7 +1570,7 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 				}
 				return implode("\n", $lines);
 
-			case 'oc_list_sounds':
+			case 'fm_list_sounds':
 				$raw = $data['output'] ?? '';
 				$raw = preg_replace('/Privilege:\s+\w+\s*/i', '', $raw);
 				// Parse table rows
@@ -1622,19 +1622,19 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 		if (!empty($data['dry_run'])) return null;
 
 		switch ($toolName) {
-			case 'oc_add_extension':
+			case 'fm_add_extension':
 				$ext = $data['extension'] ?? $params['ext'] ?? '';
 				// Chain: if combo params were passed, offer those first
 				if (!empty($params['_chain_forward'])) {
 					return [
-						'tool' => 'oc_set_call_forward',
+						'tool' => 'fm_set_call_forward',
 						'params' => ['ext' => $ext, 'number' => $params['_chain_forward']],
 						'question' => "Would you also like to forward {$ext} to {$params['_chain_forward']}?",
 					];
 				}
 				if (!empty($params['_chain_ringgroup'])) {
 					return [
-						'tool' => 'oc_ringgroup_add_member',
+						'tool' => 'fm_ringgroup_add_member',
 						'params' => ['id' => $params['_chain_ringgroup'], 'member' => $ext],
 						'question' => "Would you also like to add {$ext} to ring group {$params['_chain_ringgroup']}?",
 					];
@@ -1642,35 +1642,35 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 				// Default: offer voicemail (unless already enabled via vm:yes)
 				if (!empty($params['vm']) && $params['vm'] === 'yes') {
 					return [
-						'tool' => 'oc_reload',
+						'tool' => 'fm_reload',
 						'params' => [],
 						'question' => "Would you like to apply the changes now?",
 					];
 				}
 				return [
-					'tool' => 'oc_enable_voicemail',
+					'tool' => 'fm_enable_voicemail',
 					'params' => ['ext' => $ext],
 					'question' => "Would you also like to enable voicemail for {$ext}?",
 				];
 
-			case 'oc_enable_voicemail':
-			case 'oc_add_ringgroup':
-			case 'oc_add_inbound_route':
-			case 'oc_dialplan_apply':
-			case 'oc_disable_extension':
+			case 'fm_enable_voicemail':
+			case 'fm_add_ringgroup':
+			case 'fm_add_inbound_route':
+			case 'fm_dialplan_apply':
+			case 'fm_disable_extension':
 				return [
-					'tool' => 'oc_reload',
+					'tool' => 'fm_reload',
 					'params' => [],
 					'question' => "Would you like to apply the changes now?",
 				];
 
-			case 'oc_reload':
+			case 'fm_reload':
 				return null;
 
 			default:
 				if (!empty($data['needs_reload'])) {
 					return [
-						'tool' => 'oc_reload',
+						'tool' => 'fm_reload',
 						'params' => [],
 						'question' => "Would you like to apply the changes now?",
 					];
@@ -1813,7 +1813,7 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 	}
 
 	private function handleAuditFeed() {
-		$sth = $this->db->query("SELECT id, tool, status, created_at FROM oc_audit_log WHERE tool != 'oc_audit_search' ORDER BY created_at DESC LIMIT 5");
+		$sth = $this->db->query("SELECT id, tool, status, created_at FROM oc_audit_log WHERE tool != 'fm_audit_search' ORDER BY created_at DESC LIMIT 5");
 		$rows = $sth->fetchAll(\PDO::FETCH_ASSOC);
 		foreach ($rows as &$row) {
 			$row['time'] = date('H:i:s', $row['created_at']);

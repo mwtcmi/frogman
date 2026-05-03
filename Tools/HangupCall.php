@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class HangupCall extends AbstractTool {
-	public function name() { return 'oc_hangup_call'; }
+	public function name() { return 'fm_hangup_call'; }
 	public function description() { return 'Hang up a specific channel. Params: channel (required, from active calls list). Requires confirm:true.'; }
 	public function validate($params) {
 		if (empty($params['channel'])) return 'Parameter "channel" is required';

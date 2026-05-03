@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class RemoveInboundRoute extends AbstractTool {
-	public function name() { return 'oc_remove_inbound_route'; }
+	public function name() { return 'fm_remove_inbound_route'; }
 	public function description() { return 'Remove an inbound route. Params: extension (DID number, required), cidnum (optional). Requires confirm:true.'; }
 	public function validate($params) {
 		if (empty($params['extension'])) return 'Parameter "extension" is required';

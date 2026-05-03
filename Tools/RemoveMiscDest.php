@@ -4,7 +4,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class RemoveMiscDest extends AbstractTool {
-	public function name() { return 'oc_remove_misc_dest'; }
+	public function name() { return 'fm_remove_misc_dest'; }
 	public function description() { return 'Remove a misc destination by ID. Params: id (required). Requires confirm:true.'; }
 	public function validate($params) {
 		if (empty($params['id'])) return 'Parameter "id" is required';

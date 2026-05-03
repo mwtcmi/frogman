@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class ListAnnouncements extends AbstractTool {
-	public function name() { return 'oc_list_announcements'; }
+	public function name() { return 'fm_list_announcements'; }
 	public function description() { return 'List all announcements.'; }
 	public function validate($params) { return true; }
 	public function requiredPermission() { return null; }

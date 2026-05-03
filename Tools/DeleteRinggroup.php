@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class DeleteRinggroup extends AbstractTool {
-	public function name() { return 'oc_delete_ringgroup'; }
+	public function name() { return 'fm_delete_ringgroup'; }
 	public function description() { return 'Delete a ring group. Params: id (ring group number, required). Requires confirm:true.'; }
 	public function validate($params) {
 		if (empty($params['id'])) return 'Parameter "id" is required';

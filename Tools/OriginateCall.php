@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class OriginateCall extends AbstractTool {
-	public function name() { return 'oc_originate_call'; }
+	public function name() { return 'fm_originate_call'; }
 	public function description() { return 'Click-to-call: make the PBX call an extension, then connect to a destination. Params: ext (extension to ring first), dest (number to connect to). Requires confirm:true.'; }
 	public function validate($params) {
 		if (empty($params['ext'])) return 'Parameter "ext" is required';

@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class ListConferences extends AbstractTool {
-	public function name() { return 'oc_list_conferences'; }
+	public function name() { return 'fm_list_conferences'; }
 	public function description() { return 'List all conference rooms.'; }
 	public function validate($params) { return true; }
 	public function requiredPermission() { return null; }

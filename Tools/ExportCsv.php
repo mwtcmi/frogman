@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class ExportCsv extends AbstractTool {
-	public function name() { return 'oc_export'; }
+	public function name() { return 'fm_export'; }
 	public function description() { return 'Export PBX data as CSV. Params: type (required: extensions, ringgroups, dids, trunks, cdr, queues). Optional for CDR: date_from, date_to, limit (default 500).'; }
 	public function validate($params) {
 		if (empty($params['type'])) return 'Parameter "type" is required (extensions, ringgroups, dids, trunks, cdr, queues)';

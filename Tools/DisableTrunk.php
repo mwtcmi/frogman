@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class DisableTrunk extends AbstractTool {
-	public function name() { return 'oc_disable_trunk'; }
+	public function name() { return 'fm_disable_trunk'; }
 	public function description() { return 'Disable a trunk. Params: id (trunk ID, required). Requires confirm:true.'; }
 	public function validate($params) {
 		if (empty($params['id'])) return 'Parameter "id" is required';

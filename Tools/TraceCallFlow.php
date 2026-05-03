@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class TraceCallFlow extends AbstractTool {
-	public function name() { return 'oc_trace_call_flow'; }
+	public function name() { return 'fm_trace_call_flow'; }
 	public function description() { return 'Trace the call flow path for a DID or extension — shows the full route from inbound to final destination. Params: did (DID number) or ext (extension number).'; }
 	public function validate($params) {
 		if (empty($params['did']) && empty($params['ext'])) return 'Parameter "did" or "ext" is required';

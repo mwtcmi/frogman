@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class GetSipSettings extends AbstractTool {
-	public function name() { return 'oc_get_sip_settings'; }
+	public function name() { return 'fm_get_sip_settings'; }
 	public function description() { return 'Get SIP/PJSIP settings — transports, bind address, RTP range.'; }
 	public function validate($params) { return true; }
 	public function requiredPermission() { return null; }

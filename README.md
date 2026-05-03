@@ -64,19 +64,19 @@ Tools internally route by this priority:
 2. **AMI commands** — live call control, channel operations
 3. **Direct DB reads** — diagnostics and reporting
 4. **fwconsole wrappers** — system ops only (reload, restart, module admin, backup)
-5. **Direct DB writes** — `oc_*` tables only
+5. **Direct DB writes** — `fm_*` tables only
 
 ### Database
 
-Frogman owns five tables (prefixed `oc_*`):
+Frogman owns five tables (prefixed `fm_*`):
 
 | Table | Purpose |
 |-------|---------|
-| `oc_audit_log` | Full audit trail of every tool execution |
-| `oc_sessions` | Chat session tracking |
-| `oc_saved_queries` | Saved GraphQL queries |
-| `oc_jobs` | Async job queue (future use) |
-| `oc_aliases` | Command aliases |
+| `fm_audit_log` | Full audit trail of every tool execution |
+| `fm_sessions` | Chat session tracking |
+| `fm_saved_queries` | Saved GraphQL queries |
+| `fm_jobs` | Async job queue (future use) |
+| `fm_aliases` | Command aliases |
 
 Reads from other modules' tables are fine. Writes to other modules go through BMO or GraphQL — never direct SQL.
 
@@ -95,270 +95,270 @@ Reads from other modules' tables are fine. Writes to other modules go through BM
 
 | Tool | Description |
 |------|-------------|
-| `oc_list_extensions` | List all extensions with optional tech/search filters |
-| `oc_get_extension` | Full details for a single extension |
-| `oc_get_extension_health` | Config + SIP registration + recent CDR |
-| `oc_add_extension` | Create a new PJSIP extension **[confirm]** |
-| `oc_update_extension` | Update extension name, secret, or CID **[confirm]** |
-| `oc_disable_extension` | Delete an extension **[confirm]** |
+| `fm_list_extensions` | List all extensions with optional tech/search filters |
+| `fm_get_extension` | Full details for a single extension |
+| `fm_get_extension_health` | Config + SIP registration + recent CDR |
+| `fm_add_extension` | Create a new PJSIP extension **[confirm]** |
+| `fm_update_extension` | Update extension name, secret, or CID **[confirm]** |
+| `fm_disable_extension` | Delete an extension **[confirm]** |
 
 ### Ring Groups (4)
 
 | Tool | Description |
 |------|-------------|
-| `oc_list_ringgroups` | List all ring groups |
-| `oc_get_ringgroup` | Ring group details + member list |
-| `oc_ringgroup_add_member` | Add member to ring group **[confirm]** |
-| `oc_ringgroup_remove_member` | Remove member from ring group **[confirm]** |
+| `fm_list_ringgroups` | List all ring groups |
+| `fm_get_ringgroup` | Ring group details + member list |
+| `fm_ringgroup_add_member` | Add member to ring group **[confirm]** |
+| `fm_ringgroup_remove_member` | Remove member from ring group **[confirm]** |
 
 ### Trunks (2)
 
 | Tool | Description |
 |------|-------------|
-| `oc_list_trunks` | List all configured trunks |
-| `oc_get_trunk_status` | Trunk config + PJSIP registration status |
+| `fm_list_trunks` | List all configured trunks |
+| `fm_get_trunk_status` | Trunk config + PJSIP registration status |
 
 ### Calls & CDR (2)
 
 | Tool | Description |
 |------|-------------|
-| `oc_list_active_calls` | Active calls via AMI |
-| `oc_get_cdr` | Query call detail records with filters |
+| `fm_list_active_calls` | Active calls via AMI |
+| `fm_get_cdr` | Query call detail records with filters |
 
 ### Follow Me (2)
 
 | Tool | Description |
 |------|-------------|
-| `oc_set_followme` | Configure Follow Me for an extension **[confirm]** |
-| `oc_clear_followme` | Remove Follow Me **[confirm]** |
+| `fm_set_followme` | Configure Follow Me for an extension **[confirm]** |
+| `fm_clear_followme` | Remove Follow Me **[confirm]** |
 
 ### Call Forward & DND (5)
 
 | Tool | Description |
 |------|-------------|
-| `oc_get_call_forward` | Get call forwarding status for an extension |
-| `oc_set_call_forward` | Set call forwarding (CF/CFB/CFU) **[confirm]** |
-| `oc_clear_call_forward` | Clear call forwarding **[confirm]** |
-| `oc_get_dnd` | Get Do Not Disturb status |
-| `oc_toggle_dnd` | Toggle Do Not Disturb **[confirm]** |
+| `fm_get_call_forward` | Get call forwarding status for an extension |
+| `fm_set_call_forward` | Set call forwarding (CF/CFB/CFU) **[confirm]** |
+| `fm_clear_call_forward` | Clear call forwarding **[confirm]** |
+| `fm_get_dnd` | Get Do Not Disturb status |
+| `fm_toggle_dnd` | Toggle Do Not Disturb **[confirm]** |
 
 ### Voicemail (2)
 
 | Tool | Description |
 |------|-------------|
-| `oc_list_voicemail` | List all voicemail boxes |
-| `oc_get_voicemail` | Voicemail box details and message count |
+| `fm_list_voicemail` | List all voicemail boxes |
+| `fm_get_voicemail` | Voicemail box details and message count |
 
 ### Queues (2)
 
 | Tool | Description |
 |------|-------------|
-| `oc_list_queues` | List all call queues |
-| `oc_get_queue` | Queue details by ID |
+| `fm_list_queues` | List all call queues |
+| `fm_get_queue` | Queue details by ID |
 
 ### Conferences (2)
 
 | Tool | Description |
 |------|-------------|
-| `oc_list_conferences` | List all conference rooms |
-| `oc_get_conference` | Conference room details |
+| `fm_list_conferences` | List all conference rooms |
+| `fm_get_conference` | Conference room details |
 
 ### IVRs (2)
 
 | Tool | Description |
 |------|-------------|
-| `oc_list_ivrs` | List all IVRs |
-| `oc_get_ivr` | IVR details by ID |
+| `fm_list_ivrs` | List all IVRs |
+| `fm_get_ivr` | IVR details by ID |
 
 ### Announcements (1)
 
 | Tool | Description |
 |------|-------------|
-| `oc_list_announcements` | List all announcements |
+| `fm_list_announcements` | List all announcements |
 
 ### Time Conditions & Day-Night (4)
 
 | Tool | Description |
 |------|-------------|
-| `oc_list_time_conditions` | List all time conditions with current state |
-| `oc_toggle_time_condition` | Toggle a time condition override **[confirm]** |
-| `oc_list_daynight` | List all day/night call flow controls |
-| `oc_toggle_daynight` | Toggle a day/night call flow **[confirm]** |
+| `fm_list_time_conditions` | List all time conditions with current state |
+| `fm_toggle_time_condition` | Toggle a time condition override **[confirm]** |
+| `fm_list_daynight` | List all day/night call flow controls |
+| `fm_toggle_daynight` | Toggle a day/night call flow **[confirm]** |
 
 ### Routes (3)
 
 | Tool | Description |
 |------|-------------|
-| `oc_list_inbound_routes` | List all inbound routes (DIDs) |
-| `oc_list_outbound_routes` | List all outbound routes |
-| `oc_get_outbound_route` | Outbound route details by ID |
+| `fm_list_inbound_routes` | List all inbound routes (DIDs) |
+| `fm_list_outbound_routes` | List all outbound routes |
+| `fm_get_outbound_route` | Outbound route details by ID |
 
 ### Misc Destinations (3)
 
 | Tool | Description |
 |------|-------------|
-| `oc_list_misc_dests` | List all misc destinations |
-| `oc_add_misc_dest` | Create a misc destination **[confirm]** |
-| `oc_remove_misc_dest` | Remove a misc destination **[confirm]** |
+| `fm_list_misc_dests` | List all misc destinations |
+| `fm_add_misc_dest` | Create a misc destination **[confirm]** |
+| `fm_remove_misc_dest` | Remove a misc destination **[confirm]** |
 
 ### Blacklist (3)
 
 | Tool | Description |
 |------|-------------|
-| `oc_list_blacklist` | List all blacklisted numbers |
-| `oc_add_blacklist` | Add a number to the blacklist **[confirm]** |
-| `oc_remove_blacklist` | Remove a number from the blacklist **[confirm]** |
+| `fm_list_blacklist` | List all blacklisted numbers |
+| `fm_add_blacklist` | Add a number to the blacklist **[confirm]** |
+| `fm_remove_blacklist` | Remove a number from the blacklist **[confirm]** |
 
 ### Dialplan (5)
 
 | Tool | Description |
 |------|-------------|
-| `oc_dialplan_show` | List custom dialplan contexts |
-| `oc_dialplan_get_context` | Show contents of a custom context |
-| `oc_dialplan_templates` | List available dialplan templates |
-| `oc_dialplan_apply` | Generate and apply a dialplan template **[confirm]** |
-| `oc_dialplan_remove` | Remove a custom dialplan context **[confirm]** |
+| `fm_dialplan_show` | List custom dialplan contexts |
+| `fm_dialplan_get_context` | Show contents of a custom context |
+| `fm_dialplan_templates` | List available dialplan templates |
+| `fm_dialplan_apply` | Generate and apply a dialplan template **[confirm]** |
+| `fm_dialplan_remove` | Remove a custom dialplan context **[confirm]** |
 
 ### Paging & Parking (2)
 
 | Tool | Description |
 |------|-------------|
-| `oc_list_paging` | List all paging/intercom groups |
-| `oc_list_parking` | List parking lots and parked calls |
+| `fm_list_paging` | List all paging/intercom groups |
+| `fm_list_parking` | List parking lots and parked calls |
 
 ### Feature Codes, MOH & Recordings (3)
 
 | Tool | Description |
 |------|-------------|
-| `oc_list_feature_codes` | List all feature codes with status |
-| `oc_list_moh` | List music on hold categories |
-| `oc_list_recordings` | List all system recordings |
+| `fm_list_feature_codes` | List all feature codes with status |
+| `fm_list_moh` | List music on hold categories |
+| `fm_list_recordings` | List all system recordings |
 
 ### System (7)
 
 | Tool | Description |
 |------|-------------|
-| `oc_reload` | Apply config changes (checks active calls first) **[confirm]** |
-| `oc_backup_create` | Run a backup job by ID **[confirm]** |
-| `oc_module_list` | List all FreePBX modules |
-| `oc_module_status` | Detailed status of a specific module |
-| `oc_get_asterisk_info` | Asterisk uptime, version, channels, registrations |
-| `oc_get_firewall_status` | Firewall and intrusion detection status |
-| `oc_get_sip_settings` | SIP/PJSIP settings — external IP, NAT, ports |
+| `fm_reload` | Apply config changes (checks active calls first) **[confirm]** |
+| `fm_backup_create` | Run a backup job by ID **[confirm]** |
+| `fm_module_list` | List all FreePBX modules |
+| `fm_module_status` | Detailed status of a specific module |
+| `fm_get_asterisk_info` | Asterisk uptime, version, channels, registrations |
+| `fm_get_firewall_status` | Firewall and intrusion detection status |
+| `fm_get_sip_settings` | SIP/PJSIP settings — external IP, NAT, ports |
 
 ### Live Call Control (7) — via AMI
 
 | Tool | Level | Description |
 |------|-------|-------------|
-| `oc_originate_call` | write | Click-to-call: ring an extension, connect to destination |
-| `oc_hangup_call` | write | Hang up a specific channel |
-| `oc_transfer_call` | write | Transfer a live call to another extension |
-| `oc_park_call` | write | Park a live call |
-| `oc_monitor_call` | write | Start recording a live call |
-| `oc_stop_monitor_call` | write | Stop recording a live call |
-| `oc_mute_call` | write | Mute or unmute a channel |
+| `fm_originate_call` | write | Click-to-call: ring an extension, connect to destination |
+| `fm_hangup_call` | write | Hang up a specific channel |
+| `fm_transfer_call` | write | Transfer a live call to another extension |
+| `fm_park_call` | write | Park a live call |
+| `fm_monitor_call` | write | Start recording a live call |
+| `fm_stop_monitor_call` | write | Stop recording a live call |
+| `fm_mute_call` | write | Mute or unmute a channel |
 
 ### Queue Agent Control (4) — via AMI
 
 | Tool | Level | Description |
 |------|-------|-------------|
-| `oc_queue_add_agent` | write | Add agent to queue dynamically |
-| `oc_queue_remove_agent` | write | Remove agent from queue |
-| `oc_queue_pause_agent` | write | Pause or unpause a queue agent |
-| `oc_queue_status` | read | Real-time queue status |
+| `fm_queue_add_agent` | write | Add agent to queue dynamically |
+| `fm_queue_remove_agent` | write | Remove agent from queue |
+| `fm_queue_pause_agent` | write | Pause or unpause a queue agent |
+| `fm_queue_status` | read | Real-time queue status |
 
 ### Conference Control (4) — via AMI
 
 | Tool | Level | Description |
 |------|-------|-------------|
-| `oc_conference_participants` | read | List participants in a live conference |
-| `oc_conference_kick` | write | Kick a participant |
-| `oc_conference_mute` | write | Mute or unmute a participant |
-| `oc_conference_lock` | write | Lock or unlock a conference room |
+| `fm_conference_participants` | read | List participants in a live conference |
+| `fm_conference_kick` | write | Kick a participant |
+| `fm_conference_mute` | write | Mute or unmute a participant |
+| `fm_conference_lock` | write | Lock or unlock a conference room |
 
 ### PJSIP & Diagnostics (7) — via AMI
 
 | Tool | Level | Description |
 |------|-------|-------------|
-| `oc_pjsip_qualify` | read | Ping/qualify a PJSIP endpoint |
-| `oc_pjsip_registrations` | read | List all inbound and outbound SIP registrations |
-| `oc_pjsip_endpoint_details` | read | Deep endpoint health check — auth, transport, codecs, contacts, qualify |
-| `oc_pjsip_show_channels` | read | Active SIP channels with codec/media stats |
-| `oc_extension_states` | read | BLF/presence state for all extensions |
-| `oc_rotate_logs` | admin | Rotate Asterisk log files |
+| `fm_pjsip_qualify` | read | Ping/qualify a PJSIP endpoint |
+| `fm_pjsip_registrations` | read | List all inbound and outbound SIP registrations |
+| `fm_pjsip_endpoint_details` | read | Deep endpoint health check — auth, transport, codecs, contacts, qualify |
+| `fm_pjsip_show_channels` | read | Active SIP channels with codec/media stats |
+| `fm_extension_states` | read | BLF/presence state for all extensions |
+| `fm_rotate_logs` | admin | Rotate Asterisk log files |
 
 ### SIP Troubleshooting (3)
 
 | Tool | Level | Description |
 |------|-------|-------------|
-| `oc_sip_trace` | admin | Time-bounded SIP trace capture (start/stop/status, max 30s) |
-| `oc_diagnose_extension` | read | Composite diagnostic — endpoint + qualify + active calls + CDR + summary |
-| `oc_diagnose_trunk` | read | Composite diagnostic — registration + qualify + routes + CDR + summary |
+| `fm_sip_trace` | admin | Time-bounded SIP trace capture (start/stop/status, max 30s) |
+| `fm_diagnose_extension` | read | Composite diagnostic — endpoint + qualify + active calls + CDR + summary |
+| `fm_diagnose_trunk` | read | Composite diagnostic — registration + qualify + routes + CDR + summary |
 
 ### Asterisk Database (2) — via AMI
 
 | Tool | Level | Description |
 |------|-------|-------------|
-| `oc_astdb_get` | read | Read a value from the Asterisk database |
-| `oc_astdb_put` | admin | Write a value to the Asterisk database |
+| `fm_astdb_get` | read | Read a value from the Asterisk database |
+| `fm_astdb_put` | admin | Write a value to the Asterisk database |
 
 ### Services & Infrastructure (11)
 
 | Tool | Level | Description |
 |------|-------|-------------|
-| `oc_start` | admin | Start FreePBX and Asterisk |
-| `oc_stop` | admin | Stop FreePBX and Asterisk |
-| `oc_restart` | admin | Restart FreePBX and Asterisk |
-| `oc_enable_trunk` | write | Enable a trunk |
-| `oc_disable_trunk` | write | Disable a trunk |
-| `oc_validate` | admin | Run security validation scan |
-| `oc_chown` | admin | Fix file ownership/permissions |
-| `oc_get_external_ip` | read | Get public IP address |
-| `oc_sync_userman` | admin | Sync User Manager with external directory |
-| `oc_system_update` | admin | Check for and apply system updates |
-| `oc_update_activation` | admin | Refresh system activation and license from Sangoma portal |
+| `fm_start` | admin | Start FreePBX and Asterisk |
+| `fm_stop` | admin | Stop FreePBX and Asterisk |
+| `fm_restart` | admin | Restart FreePBX and Asterisk |
+| `fm_enable_trunk` | write | Enable a trunk |
+| `fm_disable_trunk` | write | Disable a trunk |
+| `fm_validate` | admin | Run security validation scan |
+| `fm_chown` | admin | Fix file ownership/permissions |
+| `fm_get_external_ip` | read | Get public IP address |
+| `fm_sync_userman` | admin | Sync User Manager with external directory |
+| `fm_system_update` | admin | Check for and apply system updates |
+| `fm_update_activation` | admin | Refresh system activation and license from Sangoma portal |
 
 ### Notifications & Sounds (3)
 
 | Tool | Level | Description |
 |------|-------|-------------|
-| `oc_list_notifications` | read | List system notifications |
-| `oc_delete_notification` | admin | Delete a notification |
-| `oc_list_sounds` | read | List installed sound/language packs |
+| `fm_list_notifications` | read | List system notifications |
+| `fm_delete_notification` | admin | Delete a notification |
+| `fm_list_sounds` | read | List installed sound/language packs |
 
 ### PM2, Certificates & Context (3)
 
 | Tool | Level | Description |
 |------|-------|-------------|
-| `oc_pm2_manage` | admin | Restart or stop a PM2 process |
-| `oc_update_certificates` | admin | Update/renew all SSL certificates |
-| `oc_show_context` | read | Show any Asterisk dialplan context |
+| `fm_pm2_manage` | admin | Restart or stop a PM2 process |
+| `fm_update_certificates` | admin | Update/renew all SSL certificates |
+| `fm_show_context` | read | Show any Asterisk dialplan context |
 
 ### Saved Queries (4)
 
 | Tool | Level | Description |
 |------|-------|-------------|
-| `oc_save_query` | write | Save a named GraphQL query (validates parse) |
-| `oc_run_saved_query` | read | Execute a saved query |
-| `oc_list_saved_queries` | read | List all saved queries |
-| `oc_delete_saved_query` | write | Delete a saved query |
+| `fm_save_query` | write | Save a named GraphQL query (validates parse) |
+| `fm_run_saved_query` | read | Execute a saved query |
+| `fm_list_saved_queries` | read | List all saved queries |
+| `fm_delete_saved_query` | write | Delete a saved query |
 
 ### Audit & Permissions (3)
 
 | Tool | Level | Description |
 |------|-------|-------------|
-| `oc_audit_search` | read | Search the audit log |
-| `oc_list_permissions` | admin | List user permission levels |
-| `oc_set_permission` | admin | Set a user's permission level |
+| `fm_audit_search` | read | Search the audit log |
+| `fm_list_permissions` | admin | List user permission levels |
+| `fm_set_permission` | admin | Set a user's permission level |
 
 ### Dashboard, Search, Knowledge Base & Visualization (4)
 
 | Tool | Level | Description |
 |------|-------|-------------|
-| `oc_system_dashboard` | read | Quick system status — calls, extensions, notifications, uptime |
-| `oc_search` | read | Search across extensions, ring groups, queues, IVRs, trunks |
-| `oc_search_docs` | read | Search knowledge base — troubleshooting guides, how-to articles |
-| `oc_trace_call_flow` | read | Trace call flow path for a DID or extension — Mermaid.js diagram |
+| `fm_system_dashboard` | read | Quick system status — calls, extensions, notifications, uptime |
+| `fm_search` | read | Search across extensions, ring groups, queues, IVRs, trunks |
+| `fm_search_docs` | read | Search knowledge base — troubleshooting guides, how-to articles |
+| `fm_trace_call_flow` | read | Trace call flow path for a DID or extension — Mermaid.js diagram |
 
 ## Access Methods
 
@@ -372,11 +372,11 @@ fwconsole frogman:chat
 fwconsole frogman:tool
 
 # Run a tool
-fwconsole frogman:tool oc_list_extensions '{}'
-fwconsole frogman:tool oc_get_extension '{"ext":"1001"}'
+fwconsole frogman:tool fm_list_extensions '{}'
+fwconsole frogman:tool fm_get_extension '{"ext":"1001"}'
 
 # Write tools require confirm
-fwconsole frogman:tool oc_add_extension '{"ext":"1002","name":"Jane","confirm":true}'
+fwconsole frogman:tool fm_add_extension '{"ext":"1002","name":"Jane","confirm":true}'
 ```
 
 ### HTTP API
@@ -390,7 +390,7 @@ curl http://localhost/admin/ajax.php?module=frogman&command=catalog
 # Execute a tool
 curl -X POST \
   -H "Content-Type: application/json" \
-  -d '{"tool":"oc_list_extensions","params":{}}' \
+  -d '{"tool":"fm_list_extensions","params":{}}' \
   http://localhost/admin/ajax.php?module=frogman&command=tool
 ```
 
@@ -478,13 +478,13 @@ php /var/www/html/admin/modules/frogman/mcp-server.php
 
 ### Knowledge Base (RAG)
 
-Frogman ships with curated troubleshooting and how-to documentation in `docs/`. The `oc_search_docs` tool searches these articles by keyword and returns relevant sections.
+Frogman ships with curated troubleshooting and how-to documentation in `docs/`. The `fm_search_docs` tool searches these articles by keyword and returns relevant sections.
 
 Through MCP, this enables RAG (Retrieval-Augmented Generation):
 
 1. **You ask:** "Why doesn't extension 101 work?"
-2. **AI runs diagnostics:** `oc_diagnose_extension` — checks registration, calls, CDR
-3. **AI searches docs:** `oc_search_docs` — finds relevant troubleshooting articles
+2. **AI runs diagnostics:** `fm_diagnose_extension` — checks registration, calls, CDR
+3. **AI searches docs:** `fm_search_docs` — finds relevant troubleshooting articles
 4. **AI reasons over both** and gives you an actionable answer
 
 No LLM runs on the PBX — Frogman handles the retrieval, the AI handles the reasoning. The knowledge base is 40KB of markdown files with zero server overhead.

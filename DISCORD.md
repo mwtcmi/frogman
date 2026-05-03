@@ -81,7 +81,7 @@ Discord bot (Python, on your PBX server)
      │
 Frogman chat endpoint (localhost)
      │
-     ├─ ChatParser matches "list extensions" → oc_list_extensions
+     ├─ ChatParser matches "list extensions" → fm_list_extensions
      ├─ Tool registry: validate → audit → execute → audit
      └─ Format result as readable text
      │

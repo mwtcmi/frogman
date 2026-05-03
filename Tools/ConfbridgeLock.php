@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class ConfbridgeLock extends AbstractTool {
-	public function name() { return 'oc_conference_lock'; }
+	public function name() { return 'fm_conference_lock'; }
 	public function description() { return 'Lock or unlock a conference room. Params: room (required), action (lock/unlock, default lock). Requires confirm:true.'; }
 	public function validate($params) {
 		if (empty($params['room'])) return 'Parameter "room" is required';

@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class GetTimeGroup extends AbstractTool {
-	public function name() { return 'oc_get_time_group'; }
+	public function name() { return 'fm_get_time_group'; }
 	public function description() { return 'Get time group details including configured hours. Params: id (required).'; }
 	public function validate($params) {
 		if (empty($params['id'])) return 'Parameter "id" is required';

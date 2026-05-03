@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class ListExtensionRange extends AbstractTool {
-	public function name() { return 'oc_list_extension_range'; }
+	public function name() { return 'fm_list_extension_range'; }
 	public function description() { return 'List extensions in a number range. Params: from (required), to (required).'; }
 	public function validate($params) { if (empty($params['from']) || empty($params['to'])) return 'Parameters "from" and "to" are required';
 		return true; }

@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class ListSpeedDials extends AbstractTool {
-	public function name() { return 'oc_list_speed_dials'; }
+	public function name() { return 'fm_list_speed_dials'; }
 	public function description() { return 'List all speed dial entries.'; }
 	public function validate($params) { return true; }
 	public function execute($params, $context) {

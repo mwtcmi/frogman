@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class GetIvr extends AbstractTool {
-	public function name() { return 'oc_get_ivr'; }
+	public function name() { return 'fm_get_ivr'; }
 	public function description() { return 'Get IVR details. Params: id (required).'; }
 	public function validate($params) {
 		if (empty($params['id'])) return 'Parameter "id" is required';

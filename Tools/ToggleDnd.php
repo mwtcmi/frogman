@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class ToggleDnd extends AbstractTool {
-	public function name() { return 'oc_toggle_dnd'; }
+	public function name() { return 'fm_toggle_dnd'; }
 	public function description() { return 'Toggle Do Not Disturb for an extension. Params: ext (required), state (optional: on/off). Requires confirm:true.'; }
 	public function validate($params) {
 		if (empty($params['ext'])) return 'Parameter "ext" is required';

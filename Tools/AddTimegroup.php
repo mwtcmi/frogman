@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class AddTimegroup extends AbstractTool {
-	public function name() { return 'oc_add_timegroup'; }
+	public function name() { return 'fm_add_timegroup'; }
 	public function description() { return 'Create a time group (schedule). Params: name (required), times (optional array of time strings like "09:00-17:00|mon-fri|*|*"). Requires confirm:true.'; }
 	public function validate($params) {
 		if (empty($params['name'])) return 'Parameter "name" is required';

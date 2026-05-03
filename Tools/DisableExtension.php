@@ -6,7 +6,7 @@ require_once __DIR__ . '/AbstractTool.php';
 class DisableExtension extends AbstractTool {
 
 	public function name() {
-		return 'oc_disable_extension';
+		return 'fm_disable_extension';
 	}
 
 	public function description() {

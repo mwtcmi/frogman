@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class GetTrunkByName extends AbstractTool {
-	public function name() { return 'oc_get_trunk_by_name'; }
+	public function name() { return 'fm_get_trunk_by_name'; }
 	public function description() { return 'Find a trunk by its name or channel ID. Params: name (required).'; }
 	public function validate($params) { if (empty($params['name'])) return 'Parameter "name" is required';
 		return true; }

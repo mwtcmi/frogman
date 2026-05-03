@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class ModuleInstall extends AbstractTool {
-	public function name() { return 'oc_module_install'; }
+	public function name() { return 'fm_module_install'; }
 	public function description() { return 'Install a FreePBX module. Params: name (required). Requires confirm:true.'; }
 	public function validate($params) {
 		if (empty($params['name'])) return 'Parameter "name" is required';

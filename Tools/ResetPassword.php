@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class ResetPassword extends AbstractTool {
-	public function name() { return 'oc_reset_password'; }
+	public function name() { return 'fm_reset_password'; }
 	public function description() { return 'Reset password for an admin user. Params: username (required), password (optional, auto-generates if omitted). Requires confirm:true.'; }
 	public function validate($params) {
 		if (empty($params['username'])) return 'Parameter "username" is required';

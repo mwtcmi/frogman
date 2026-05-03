@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class PjsipShowChannels extends AbstractTool {
-	public function name() { return 'oc_pjsip_show_channels'; }
+	public function name() { return 'fm_pjsip_show_channels'; }
 	public function description() { return 'Show active PJSIP channels with codec, media, and call detail. Optional filter: endpoint (extension or trunk name).'; }
 
 	public function validate($params) {

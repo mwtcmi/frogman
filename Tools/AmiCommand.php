@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class AmiCommand extends AbstractTool {
-	public function name() { return 'oc_ami_command'; }
+	public function name() { return 'fm_ami_command'; }
 	public function description() { return 'Run an Asterisk CLI command via AMI. Params: command (required). Read-only commands only.'; }
 	public function validate($params) {
 		if (empty($params['command'])) return 'Parameter "command" is required';

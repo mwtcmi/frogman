@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class SetPermission extends AbstractTool {
-	public function name() { return 'oc_set_permission'; }
+	public function name() { return 'fm_set_permission'; }
 	public function description() { return 'Set Frogman permission level for a user. Params: username (required), level (required: read/write/admin). Requires confirm:true.'; }
 	public function validate($params) {
 		if (empty($params['username'])) return 'Parameter "username" is required';

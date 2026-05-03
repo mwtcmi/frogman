@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class ToggleDaynight extends AbstractTool {
-	public function name() { return 'oc_toggle_daynight'; }
+	public function name() { return 'fm_toggle_daynight'; }
 	public function description() { return 'Toggle a day/night call flow. Params: id (required), state (optional: day/night). Requires confirm:true.'; }
 	public function validate($params) {
 		if (empty($params['id'])) return 'Parameter "id" is required';

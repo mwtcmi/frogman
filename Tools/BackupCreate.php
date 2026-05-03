@@ -6,7 +6,7 @@ require_once __DIR__ . '/AbstractTool.php';
 class BackupCreate extends AbstractTool {
 
 	public function name() {
-		return 'oc_backup_create';
+		return 'fm_backup_create';
 	}
 
 	public function description() {

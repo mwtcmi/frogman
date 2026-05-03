@@ -6,7 +6,7 @@ require_once __DIR__ . '/AbstractTool.php';
 class ClearFollowme extends AbstractTool {
 
 	public function name() {
-		return 'oc_clear_followme';
+		return 'fm_clear_followme';
 	}
 
 	public function description() {

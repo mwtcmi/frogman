@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class FwconsoleCmd extends AbstractTool {
-	public function name() { return 'oc_fwconsole'; }
+	public function name() { return 'fm_fwconsole'; }
 	public function description() { return 'Run an fwconsole command. Params: args (required, e.g. "ma list" or "sa info"). Requires confirm:true for non-read commands.'; }
 	public function validate($params) {
 		if (empty($params['args'])) return 'Parameter "args" is required';

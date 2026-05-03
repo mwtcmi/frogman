@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class QueuePauseAgent extends AbstractTool {
-	public function name() { return 'oc_queue_pause_agent'; }
+	public function name() { return 'fm_queue_pause_agent'; }
 	public function description() { return 'Pause or unpause a queue agent. Params: queue (required), ext (required), paused (true/false, default true). Requires confirm:true.'; }
 	public function validate($params) {
 		if (empty($params['queue'])) return 'Parameter "queue" is required';

@@ -6,7 +6,7 @@ require_once __DIR__ . '/AbstractTool.php';
 class RinggroupAddMember extends AbstractTool {
 
 	public function name() {
-		return 'oc_ringgroup_add_member';
+		return 'fm_ringgroup_add_member';
 	}
 
 	public function description() {

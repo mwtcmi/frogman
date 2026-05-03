@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class ListApiTokens extends AbstractTool {
-	public function name() { return 'oc_list_api_tokens'; }
+	public function name() { return 'fm_list_api_tokens'; }
 	public function description() { return 'List all API tokens (tokens are masked).'; }
 	public function validate($params) { return true; }
 	public function permissionLevel() { return self::PERM_ADMIN; }

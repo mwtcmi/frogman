@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class ExtensionStateList extends AbstractTool {
-	public function name() { return 'oc_extension_states'; }
+	public function name() { return 'fm_extension_states'; }
 	public function description() { return 'List BLF/presence state for all extensions — shows who is on a call, ringing, idle.'; }
 	public function validate($params) { return true; }
 	public function execute($params, $context) {

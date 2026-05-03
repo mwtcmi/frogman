@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class GetQueueDetails extends AbstractTool {
-	public function name() { return 'oc_get_queue_details'; }
+	public function name() { return 'fm_get_queue_details'; }
 	public function description() { return 'Get detailed queue configuration including dynamic members. Params: id (required, queue extension).'; }
 	public function validate($params) {
 		if (empty($params['id'])) return 'Parameter "id" is required';

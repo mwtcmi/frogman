@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class SipTrace extends AbstractTool {
-	public function name() { return 'oc_sip_trace'; }
+	public function name() { return 'fm_sip_trace'; }
 	public function description() { return 'Capture a time-bounded SIP trace via AMI. Params: action (required: "start", "stop", "status"), duration (seconds, default 10, max 30). Start begins capture, stop ends and returns captured data. Auto-stops after duration.'; }
 
 	public function permissionLevel() { return self::PERM_ADMIN; }

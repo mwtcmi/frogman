@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class ListCidLookup extends AbstractTool {
-	public function name() { return 'oc_list_cid_lookup'; }
+	public function name() { return 'fm_list_cid_lookup'; }
 	public function description() { return 'List all Caller ID lookup sources.'; }
 	public function validate($params) { return true; }
 	public function execute($params, $context) {

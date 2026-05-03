@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class DeleteApiToken extends AbstractTool {
-	public function name() { return 'oc_delete_api_token'; }
+	public function name() { return 'fm_delete_api_token'; }
 	public function description() { return 'Permanently delete an API token. Params: id (required). Requires confirm:true.'; }
 	public function validate($params) {
 		if (empty($params['id'])) return 'Parameter "id" is required';

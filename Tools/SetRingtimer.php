@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class SetRingtimer extends AbstractTool {
-	public function name() { return 'oc_set_ringtimer'; }
+	public function name() { return 'fm_set_ringtimer'; }
 	public function description() { return 'Set ring timeout for an extension. Params: ext (required), seconds (required, 0 for default/unlimited). Requires confirm:true.'; }
 	public function validate($params) {
 		if (empty($params['ext'])) return 'Parameter "ext" is required';

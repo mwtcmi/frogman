@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class GetParkingLot extends AbstractTool {
-	public function name() { return 'oc_get_parking_lot'; }
+	public function name() { return 'fm_get_parking_lot'; }
 	public function description() { return 'Get details for a parking lot. Params: id (required).'; }
 	public function validate($params) {
 		if (!isset($params['id'])) return 'Parameter "id" is required';

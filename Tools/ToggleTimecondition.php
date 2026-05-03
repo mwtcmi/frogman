@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class ToggleTimecondition extends AbstractTool {
-	public function name() { return 'oc_toggle_time_condition'; }
+	public function name() { return 'fm_toggle_time_condition'; }
 	public function description() { return 'Toggle a time condition override. Params: id (required), state (optional: 0=normal, 1=override-match, 2=override-nomatch). Requires confirm:true.'; }
 	public function validate($params) {
 		if (empty($params['id'])) return 'Parameter "id" is required';

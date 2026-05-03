@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class ListMoh extends AbstractTool {
-	public function name() { return 'oc_list_moh'; }
+	public function name() { return 'fm_list_moh'; }
 	public function description() { return 'List all music on hold categories.'; }
 	public function validate($params) { return true; }
 	public function requiredPermission() { return null; }

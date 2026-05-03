@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class EditTimeGroup extends AbstractTool {
-	public function name() { return 'oc_edit_time_group'; }
+	public function name() { return 'fm_edit_time_group'; }
 	public function description() { return 'Set hours on a time group. Params: id (required), times (required, array of time entries). Each entry: hour_start, minute_start, hour_finish, minute_finish, wday_start (mon-sun), wday_finish (mon-sun). Example: times=[{"hour_start":"09","minute_start":"00","hour_finish":"17","minute_finish":"00","wday_start":"mon","wday_finish":"fri"}]. Requires confirm:true.'; }
 	public function validate($params) {
 		if (empty($params['id'])) return 'Parameter "id" is required (time group ID)';

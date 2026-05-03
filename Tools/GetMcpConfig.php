@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class GetMcpConfig extends AbstractTool {
-	public function name() { return 'oc_get_mcp_config'; }
+	public function name() { return 'fm_get_mcp_config'; }
 	public function description() { return 'Get MCP connection config for Claude Desktop or Claude Code. Shows copy-paste ready configuration.'; }
 	public function validate($params) { return true; }
 	public function execute($params, $context) {

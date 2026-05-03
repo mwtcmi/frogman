@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class ListVoicemail extends AbstractTool {
-	public function name() { return 'oc_list_voicemail'; }
+	public function name() { return 'fm_list_voicemail'; }
 	public function description() { return 'List all voicemail boxes. Optional: type ("settings" to show global voicemail settings instead).'; }
 	public function validate($params) { return true; }
 	public function requiredPermission() { return null; }

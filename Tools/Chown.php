@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class Chown extends AbstractTool {
-	public function name() { return 'oc_chown'; }
+	public function name() { return 'fm_chown'; }
 	public function description() { return 'Fix file ownership/permissions. Requires confirm:true.'; }
 	public function validate($params) { return true; }
 	public function permissionLevel() { return self::PERM_ADMIN; }

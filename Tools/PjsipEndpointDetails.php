@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class PjsipEndpointDetails extends AbstractTool {
-	public function name() { return 'oc_pjsip_endpoint_details'; }
+	public function name() { return 'fm_pjsip_endpoint_details'; }
 	public function description() { return 'Deep PJSIP endpoint health check — auth, transport, codecs, contact status, qualify latency. Params: endpoint (required, extension number or trunk name).'; }
 
 	public function validate($params) {

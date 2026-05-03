@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class GetCallWaitingAll extends AbstractTool {
-	public function name() { return 'oc_list_call_waiting'; }
+	public function name() { return 'fm_list_call_waiting'; }
 	public function description() { return 'List call waiting status for all extensions.'; }
 	public function validate($params) { return true; }
 	public function execute($params, $context) {

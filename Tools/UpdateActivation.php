@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class UpdateActivation extends AbstractTool {
-	public function name() { return 'oc_update_activation'; }
+	public function name() { return 'fm_update_activation'; }
 	public function description() { return 'Refresh system activation and license from Sangoma portal. Restarts Apache. Requires confirm:true.'; }
 	public function validate($params) { return true; }
 	public function permissionLevel() { return self::PERM_ADMIN; }

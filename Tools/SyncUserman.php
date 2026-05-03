@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class SyncUserman extends AbstractTool {
-	public function name() { return 'oc_sync_userman'; }
+	public function name() { return 'fm_sync_userman'; }
 	public function description() { return 'Sync User Manager with external directory. Requires confirm:true.'; }
 	public function validate($params) { return true; }
 	public function permissionLevel() { return self::PERM_ADMIN; }

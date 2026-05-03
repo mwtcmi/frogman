@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class ConfbridgeMute extends AbstractTool {
-	public function name() { return 'oc_conference_mute'; }
+	public function name() { return 'fm_conference_mute'; }
 	public function description() { return 'Mute or unmute a conference participant. Params: room (required), channel (required), action (mute/unmute, default mute). Requires confirm:true.'; }
 	public function validate($params) {
 		if (empty($params['room'])) return 'Parameter "room" is required';

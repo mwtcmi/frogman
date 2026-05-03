@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class ParkCall extends AbstractTool {
-	public function name() { return 'oc_park_call'; }
+	public function name() { return 'fm_park_call'; }
 	public function description() { return 'Park a live call. Params: channel (required). Requires confirm:true.'; }
 	public function validate($params) {
 		if (empty($params['channel'])) return 'Parameter "channel" is required';

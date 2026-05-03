@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class CountTrunks extends AbstractTool {
-	public function name() { return 'oc_count_trunks'; }
+	public function name() { return 'fm_count_trunks'; }
 	public function description() { return 'Count trunks grouped by technology and status.'; }
 	public function validate($params) { return true; }
 	public function execute($params, $context) {

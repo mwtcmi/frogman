@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class CreateApiToken extends AbstractTool {
-	public function name() { return 'oc_create_api_token'; }
+	public function name() { return 'fm_create_api_token'; }
 	public function description() { return 'Generate an API token for remote access. Params: username (required), description (optional), level (read/write/admin, default read). Requires confirm:true.'; }
 	public function validate($params) {
 		if (empty($params['username'])) return 'Parameter "username" is required';

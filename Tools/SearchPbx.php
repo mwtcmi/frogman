@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class SearchPbx extends AbstractTool {
-	public function name() { return 'oc_search'; }
+	public function name() { return 'fm_search'; }
 	public function description() { return 'Search across extensions, ring groups, queues, IVRs, and trunks by name or number. Params: query (required).'; }
 	public function validate($params) {
 		if (empty($params['query'])) return 'Parameter "query" is required';

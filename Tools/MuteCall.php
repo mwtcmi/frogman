@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class MuteCall extends AbstractTool {
-	public function name() { return 'oc_mute_call'; }
+	public function name() { return 'fm_mute_call'; }
 	public function description() { return 'Mute or unmute a channel. Params: channel (required), direction (in/out/all, default all), state (on/off, default on). Requires confirm:true.'; }
 	public function validate($params) {
 		if (empty($params['channel'])) return 'Parameter "channel" is required';

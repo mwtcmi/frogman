@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class SystemUpdate extends AbstractTool {
-	public function name() { return 'oc_system_update'; }
+	public function name() { return 'fm_system_update'; }
 	public function description() { return 'Check for and apply system updates. Requires confirm:true.'; }
 	public function validate($params) { return true; }
 	public function permissionLevel() { return self::PERM_ADMIN; }

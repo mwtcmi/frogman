@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class QueueStatusLive extends AbstractTool {
-	public function name() { return 'oc_queue_status'; }
+	public function name() { return 'fm_queue_status'; }
 	public function description() { return 'Get real-time queue status via AMI — callers waiting, agents logged in, stats. Params: queue (optional, all queues if omitted).'; }
 	public function validate($params) { return true; }
 	public function execute($params, $context) {

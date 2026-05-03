@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class FirewallAddNetwork extends AbstractTool {
-	public function name() { return 'oc_firewall_add_network'; }
+	public function name() { return 'fm_firewall_add_network'; }
 	public function description() { return 'Add a network/IP to a firewall zone. Params: network (CIDR, required), zone (required: trusted/internal/external/other), description (optional). Requires confirm:true.'; }
 	public function validate($params) {
 		if (empty($params['network'])) return 'Parameter "network" is required (CIDR format)';

@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class QueueAddAgent extends AbstractTool {
-	public function name() { return 'oc_queue_add_agent'; }
+	public function name() { return 'fm_queue_add_agent'; }
 	public function description() { return 'Add an agent to a queue dynamically (live, via AMI). Params: queue (required), ext (required). Requires confirm:true.'; }
 	public function validate($params) {
 		if (empty($params['queue'])) return 'Parameter "queue" is required';

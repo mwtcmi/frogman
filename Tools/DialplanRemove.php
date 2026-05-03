@@ -5,7 +5,7 @@ require_once __DIR__ . '/AbstractTool.php';
 require_once dirname(__DIR__) . '/Dialplan/DialplanFile.php';
 
 class DialplanRemove extends AbstractTool {
-	public function name() { return 'oc_dialplan_remove'; }
+	public function name() { return 'fm_dialplan_remove'; }
 	public function description() { return 'Remove a custom dialplan context. Params: name (required). Requires confirm:true.'; }
 	public function validate($params) {
 		if (empty($params['name'])) return 'Parameter "name" is required';

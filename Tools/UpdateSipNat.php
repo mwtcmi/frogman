@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class UpdateSipNat extends AbstractTool {
-	public function name() { return 'oc_update_sip_nat'; }
+	public function name() { return 'fm_update_sip_nat'; }
 	public function description() { return 'Update SIP NAT external IP or local network. Params: external_ip (optional), local_network (optional). Requires confirm:true.'; }
 	public function validate($params) {
 		if (empty($params['external_ip']) && empty($params['local_network'])) {

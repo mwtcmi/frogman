@@ -6,7 +6,7 @@ require_once __DIR__ . '/AbstractTool.php';
 class ListActiveCalls extends AbstractTool {
 
 	public function name() {
-		return 'oc_list_active_calls';
+		return 'fm_list_active_calls';
 	}
 
 	public function description() {

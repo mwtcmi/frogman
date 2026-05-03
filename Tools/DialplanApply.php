@@ -6,7 +6,7 @@ require_once dirname(__DIR__) . '/Dialplan/DialplanFile.php';
 require_once dirname(__DIR__) . '/Dialplan/Templates.php';
 
 class DialplanApply extends AbstractTool {
-	public function name() { return 'oc_dialplan_apply'; }
+	public function name() { return 'fm_dialplan_apply'; }
 	public function description() { return 'Generate and apply a dialplan template. Params: template (required), plus template-specific params. Requires confirm:true.'; }
 
 	public function validate($params) {

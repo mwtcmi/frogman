@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class StartFreepbx extends AbstractTool {
-	public function name() { return 'oc_start'; }
+	public function name() { return 'fm_start'; }
 	public function description() { return 'Start FreePBX and Asterisk services. Requires confirm:true.'; }
 	public function validate($params) { return true; }
 	public function permissionLevel() { return self::PERM_ADMIN; }

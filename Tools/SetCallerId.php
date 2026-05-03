@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class SetCallerId extends AbstractTool {
-	public function name() { return 'oc_set_caller_id'; }
+	public function name() { return 'fm_set_caller_id'; }
 	public function description() { return 'Set outbound caller ID on an extension. Params: ext (required), cid (required, phone number or empty to clear). Requires confirm:true.'; }
 	public function validate($params) {
 		if (empty($params['ext'])) return 'Parameter "ext" is required';

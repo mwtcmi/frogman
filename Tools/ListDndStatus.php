@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class ListDndStatus extends AbstractTool {
-	public function name() { return 'oc_list_dnd_status'; }
+	public function name() { return 'fm_list_dnd_status'; }
 	public function description() { return 'List DND status for all extensions.'; }
 	public function validate($params) { return true; }
 	public function execute($params, $context) {

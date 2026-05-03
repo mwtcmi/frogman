@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class GetPageGroup extends AbstractTool {
-	public function name() { return 'oc_get_page_group'; }
+	public function name() { return 'fm_get_page_group'; }
 	public function description() { return 'Get details for a paging/intercom group. Params: id (required).'; }
 	public function validate($params) {
 		if (empty($params['id'])) return 'Parameter "id" is required';

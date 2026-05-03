@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class ListUsers extends AbstractTool {
-	public function name() { return 'oc_list_users'; }
+	public function name() { return 'fm_list_users'; }
 	public function description() { return 'List all User Manager users.'; }
 	public function validate($params) { return true; }
 	public function execute($params, $context) {

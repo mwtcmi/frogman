@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class SetCallForward extends AbstractTool {
-	public function name() { return 'oc_set_call_forward'; }
+	public function name() { return 'fm_set_call_forward'; }
 	public function description() { return 'Set call forwarding for an extension. Params: ext (required), number (required), type (optional: CF/CFB/CFU, default CF). Requires confirm:true.'; }
 	public function validate($params) {
 		if (empty($params['ext'])) return 'Parameter "ext" is required';

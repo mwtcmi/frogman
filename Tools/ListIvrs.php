@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class ListIvrs extends AbstractTool {
-	public function name() { return 'oc_list_ivrs'; }
+	public function name() { return 'fm_list_ivrs'; }
 	public function description() { return 'List all IVRs.'; }
 	public function validate($params) { return true; }
 	public function requiredPermission() { return null; }

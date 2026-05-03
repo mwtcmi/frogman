@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class ListTimeconditions extends AbstractTool {
-	public function name() { return 'oc_list_time_conditions'; }
+	public function name() { return 'fm_list_time_conditions'; }
 	public function description() { return 'List all time conditions with their current state.'; }
 	public function validate($params) { return true; }
 	public function requiredPermission() { return null; }

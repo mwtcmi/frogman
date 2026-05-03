@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class AddIvr extends AbstractTool {
-	public function name() { return 'oc_add_ivr'; }
+	public function name() { return 'fm_add_ivr'; }
 	public function description() { return 'Create an IVR via FreePBX. Params: name (required), description (optional), announcement (recording ID, optional), timeout (seconds, default 10), invalid_destination (dest string, optional), timeout_destination (dest string, optional), entries (array of {selection, dest}, required). Requires confirm:true.'; }
 	public function validate($params) {
 		if (empty($params['name'])) return 'Parameter "name" is required';

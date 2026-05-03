@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class GetAdvancedSetting extends AbstractTool {
-	public function name() { return 'oc_get_advanced_setting'; }
+	public function name() { return 'fm_get_advanced_setting'; }
 	public function description() { return 'Get a FreePBX advanced setting value. Params: key (required). Or pass key=list to list common settings.'; }
 	public function validate($params) {
 		if (empty($params['key'])) return 'Parameter "key" is required';

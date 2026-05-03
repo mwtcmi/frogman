@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class SearchDocs extends AbstractTool {
-	public function name() { return 'oc_search_docs'; }
+	public function name() { return 'fm_search_docs'; }
 	public function description() { return 'Search the Frogman knowledge base for troubleshooting guides and how-to articles. Params: query (required).'; }
 	public function validate($params) {
 		if (empty($params['query'])) return 'Parameter "query" is required';

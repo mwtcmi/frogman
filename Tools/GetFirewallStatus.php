@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class GetFirewallStatus extends AbstractTool {
-	public function name() { return 'oc_get_firewall_status'; }
+	public function name() { return 'fm_get_firewall_status'; }
 	public function description() { return 'Get firewall status, intrusion detection, and network zones.'; }
 	public function validate($params) { return true; }
 	public function requiredPermission() { return null; }

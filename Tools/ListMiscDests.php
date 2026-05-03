@@ -4,7 +4,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class ListMiscDests extends AbstractTool {
-	public function name() { return 'oc_list_misc_dests'; }
+	public function name() { return 'fm_list_misc_dests'; }
 	public function description() { return 'List all misc destinations.'; }
 	public function validate($params) { return true; }
 	public function requiredPermission() { return null; }

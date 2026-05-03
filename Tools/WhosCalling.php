@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class WhosCalling extends AbstractTool {
-	public function name() { return 'oc_whos_calling'; }
+	public function name() { return 'fm_whos_calling'; }
 	public function description() { return 'Look up a phone number — check CDR history, contacts, and caller ID. Params: number (required).'; }
 	public function validate($params) {
 		if (empty($params['number'])) return 'Parameter "number" is required';

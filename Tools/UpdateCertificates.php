@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class UpdateCertificates extends AbstractTool {
-	public function name() { return 'oc_update_certificates'; }
+	public function name() { return 'fm_update_certificates'; }
 	public function description() { return 'Update/renew all SSL certificates. Requires confirm:true.'; }
 	public function validate($params) { return true; }
 	public function permissionLevel() { return self::PERM_ADMIN; }

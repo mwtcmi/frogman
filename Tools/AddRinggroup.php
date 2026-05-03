@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class AddRinggroup extends AbstractTool {
-	public function name() { return 'oc_add_ringgroup'; }
+	public function name() { return 'fm_add_ringgroup'; }
 	public function description() { return 'Create a new ring group. Params: grpnum (required), description (required), members (comma-separated extensions, required), strategy (optional: ringall/hunt/memoryhunt, default ringall), grptime (optional, default 20). Requires confirm:true.'; }
 	public function validate($params) {
 		if (empty($params['grpnum'])) return 'Parameter "grpnum" is required';

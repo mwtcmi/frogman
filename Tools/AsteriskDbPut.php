@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class AsteriskDbPut extends AbstractTool {
-	public function name() { return 'oc_astdb_put'; }
+	public function name() { return 'fm_astdb_put'; }
 	public function description() { return 'Write a value to the Asterisk database. Params: family (required), key (required), value (required). Requires confirm:true.'; }
 	public function validate($params) {
 		if (empty($params['family'])) return 'Parameter "family" is required';

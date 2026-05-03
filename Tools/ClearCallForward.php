@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class ClearCallForward extends AbstractTool {
-	public function name() { return 'oc_clear_call_forward'; }
+	public function name() { return 'fm_clear_call_forward'; }
 	public function description() { return 'Clear call forwarding for an extension. Params: ext (required). Requires confirm:true.'; }
 	public function validate($params) {
 		if (empty($params['ext'])) return 'Parameter "ext" is required';

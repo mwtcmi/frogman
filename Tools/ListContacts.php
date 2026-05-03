@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class ListContacts extends AbstractTool {
-	public function name() { return 'oc_list_contacts'; }
+	public function name() { return 'fm_list_contacts'; }
 	public function description() { return 'List contact groups from the Contact Manager. Optional: group_id (show entries for a specific group).'; }
 	public function validate($params) { return true; }
 	public function execute($params, $context) {

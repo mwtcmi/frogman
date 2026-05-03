@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class GetCdrStats extends AbstractTool {
-	public function name() { return 'oc_get_cdr_stats'; }
+	public function name() { return 'fm_get_cdr_stats'; }
 	public function description() { return 'Get CDR statistics — call counts by disposition, avg duration. Optional: date_from, date_to.'; }
 	public function validate($params) { return true; }
 	public function execute($params, $context) {

@@ -6,7 +6,7 @@ require_once __DIR__ . '/AbstractTool.php';
 class GetRinggroup extends AbstractTool {
 
 	public function name() {
-		return 'oc_get_ringgroup';
+		return 'fm_get_ringgroup';
 	}
 
 	public function description() {

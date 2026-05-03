@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class CreateAdmin extends AbstractTool {
-	public function name() { return 'oc_create_admin'; }
+	public function name() { return 'fm_create_admin'; }
 	public function description() { return 'Create an admin user. Params: username (required), password (optional, auto-generates strong password if omitted), name (optional), email (optional). Requires confirm:true.'; }
 	public function validate($params) {
 		if (empty($params['username'])) return 'Parameter "username" is required';

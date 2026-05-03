@@ -6,7 +6,7 @@ require_once __DIR__ . '/AbstractTool.php';
 class GetExtensionHealth extends AbstractTool {
 
 	public function name() {
-		return 'oc_get_extension_health';
+		return 'fm_get_extension_health';
 	}
 
 	public function description() {

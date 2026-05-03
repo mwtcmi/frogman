@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class ModuleList extends AbstractTool {
-	public function name() { return 'oc_module_list'; }
+	public function name() { return 'fm_module_list'; }
 	public function description() { return 'List all installed FreePBX modules with version and status. Optional filter: status (enabled/disabled).'; }
 	public function validate($params) {
 		if (isset($params['status']) && !in_array(strtolower($params['status']), ['enabled', 'disabled', ''])) {

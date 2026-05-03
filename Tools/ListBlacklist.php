@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class ListBlacklist extends AbstractTool {
-	public function name() { return 'oc_list_blacklist'; }
+	public function name() { return 'fm_list_blacklist'; }
 	public function description() { return 'List all blacklisted numbers.'; }
 	public function validate($params) { return true; }
 	public function requiredPermission() { return null; }

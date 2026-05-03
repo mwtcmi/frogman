@@ -6,7 +6,7 @@ require_once __DIR__ . '/AbstractTool.php';
 class ModuleStatus extends AbstractTool {
 
 	public function name() {
-		return 'oc_module_status';
+		return 'fm_module_status';
 	}
 
 	public function description() {

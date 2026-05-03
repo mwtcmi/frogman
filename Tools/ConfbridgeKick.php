@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class ConfbridgeKick extends AbstractTool {
-	public function name() { return 'oc_conference_kick'; }
+	public function name() { return 'fm_conference_kick'; }
 	public function description() { return 'Kick a participant from a conference. Params: room (required), channel (required). Requires confirm:true.'; }
 	public function validate($params) {
 		if (empty($params['room'])) return 'Parameter "room" is required';

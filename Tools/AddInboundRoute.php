@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class AddInboundRoute extends AbstractTool {
-	public function name() { return 'oc_add_inbound_route'; }
+	public function name() { return 'fm_add_inbound_route'; }
 	public function description() { return 'Add an inbound route (DID). Params: extension (DID number, required), destination (required, e.g. "from-internal,1001,1"), description (optional), cidnum (optional). Requires confirm:true.'; }
 	public function validate($params) {
 		if (empty($params['extension'])) return 'Parameter "extension" is required';

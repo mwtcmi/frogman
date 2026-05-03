@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class Reload extends AbstractTool {
-	public function name() { return 'oc_reload'; }
+	public function name() { return 'fm_reload'; }
 	public function description() { return 'Apply configuration changes. Confirms only if there are active calls.'; }
 	public function validate($params) { return true; }
 	public function permissionLevel() { return self::PERM_WRITE; }

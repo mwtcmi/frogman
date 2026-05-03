@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class AddBlacklist extends AbstractTool {
-	public function name() { return 'oc_add_blacklist'; }
+	public function name() { return 'fm_add_blacklist'; }
 	public function description() { return 'Add a number to the blacklist. Params: number (required), description (optional). Requires confirm:true.'; }
 	public function validate($params) {
 		if (empty($params['number'])) return 'Parameter "number" is required';

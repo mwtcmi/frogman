@@ -5,7 +5,7 @@ require_once __DIR__ . '/AbstractTool.php';
 require_once dirname(__DIR__) . '/Dialplan/DialplanFile.php';
 
 class DialplanShow extends AbstractTool {
-	public function name() { return 'oc_dialplan_show'; }
+	public function name() { return 'fm_dialplan_show'; }
 	public function description() { return 'List all custom dialplan contexts in extensions_custom.conf.'; }
 	public function validate($params) { return true; }
 	public function requiredPermission() { return null; }

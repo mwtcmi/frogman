@@ -19,7 +19,7 @@ Remote clients must include an `X-Frogman-Token` header.
 **Generate a token:**
 ```bash
 # From CLI
-fwconsole frogman:tool oc_create_api_token '{"username":"mybot","description":"My bot","level":"read","confirm":true}'
+fwconsole frogman:tool fm_create_api_token '{"username":"mybot","description":"My bot","level":"read","confirm":true}'
 
 # From the web console
 create token for mybot with read
@@ -35,10 +35,10 @@ create token for mybot with read
 **Revoke a token:**
 ```bash
 # List tokens to find the ID
-fwconsole frogman:tool oc_list_api_tokens '{}'
+fwconsole frogman:tool fm_list_api_tokens '{}'
 
 # Revoke by ID
-fwconsole frogman:tool oc_revoke_api_token '{"id":"1","confirm":true}'
+fwconsole frogman:tool fm_revoke_api_token '{"id":"1","confirm":true}'
 ```
 
 ## Endpoints
@@ -49,7 +49,7 @@ POST /admin/ajax.php?module=frogman&command=tool
 Content-Type: application/json
 X-Frogman-Token: <your-token>
 
-{"tool": "oc_list_extensions", "params": {}}
+{"tool": "fm_list_extensions", "params": {}}
 ```
 
 ### Tool Catalog
@@ -78,7 +78,7 @@ Returns formatted text responses. Supports confirmations via `session_id`.
 curl -X POST \
   -H "Content-Type: application/json" \
   -H "X-Frogman-Token: YOUR_TOKEN" \
-  -d '{"tool": "oc_list_extensions", "params": {}}' \
+  -d '{"tool": "fm_list_extensions", "params": {}}' \
   https://your-pbx/admin/ajax.php?module=frogman&command=tool
 ```
 
@@ -102,7 +102,7 @@ Response:
 curl -X POST \
   -H "Content-Type: application/json" \
   -H "X-Frogman-Token: YOUR_TOKEN" \
-  -d '{"tool": "oc_add_extension", "params": {"ext": "200", "name": "New User", "confirm": true}}' \
+  -d '{"tool": "fm_add_extension", "params": {"ext": "200", "name": "New User", "confirm": true}}' \
   https://your-pbx/admin/ajax.php?module=frogman&command=tool
 ```
 
@@ -113,7 +113,7 @@ Write tools require `"confirm": true` in params or they return a dry-run preview
 curl -X POST \
   -H "Content-Type: application/json" \
   -H "X-Frogman-Token: YOUR_TOKEN" \
-  -d '{"tool": "oc_diagnose_extension", "params": {"ext": "101"}}' \
+  -d '{"tool": "fm_diagnose_extension", "params": {"ext": "101"}}' \
   https://your-pbx/admin/ajax.php?module=frogman&command=tool
 ```
 
@@ -122,7 +122,7 @@ curl -X POST \
 curl -X POST \
   -H "Content-Type: application/json" \
   -H "X-Frogman-Token: YOUR_TOKEN" \
-  -d '{"tool": "oc_search_docs", "params": {"query": "NAT one way audio"}}' \
+  -d '{"tool": "fm_search_docs", "params": {"query": "NAT one way audio"}}' \
   https://your-pbx/admin/ajax.php?module=frogman&command=tool
 ```
 
@@ -131,7 +131,7 @@ curl -X POST \
 curl -X POST \
   -H "Content-Type: application/json" \
   -H "X-Frogman-Token: YOUR_TOKEN" \
-  -d '{"tool": "oc_export", "params": {"type": "extensions"}}' \
+  -d '{"tool": "fm_export", "params": {"type": "extensions"}}' \
   https://your-pbx/admin/ajax.php?module=frogman&command=tool
 ```
 
@@ -182,6 +182,6 @@ The chat endpoint returns human-readable formatted text. Use `session_id` to mai
 - Token levels control what tools can be executed: `read` (view only), `write` (create/modify PBX objects), `admin` (full access)
 - All tool executions are audit-logged with timestamp, tool name, params, and user
 - Write tools require explicit `"confirm": true` — without it, they return a preview
-- API tokens can be revoked instantly via `oc_revoke_api_token`
+- API tokens can be revoked instantly via `fm_revoke_api_token`
 - The raw token is only shown once at creation — save it securely
 - Use HTTPS in production

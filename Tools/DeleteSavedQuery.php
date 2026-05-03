@@ -6,7 +6,7 @@ require_once __DIR__ . '/AbstractTool.php';
 class DeleteSavedQuery extends AbstractTool {
 
 	public function name() {
-		return 'oc_delete_saved_query';
+		return 'fm_delete_saved_query';
 	}
 
 	public function description() {

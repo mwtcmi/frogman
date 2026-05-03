@@ -6,7 +6,7 @@ require_once __DIR__ . '/AbstractTool.php';
 class SaveQuery extends AbstractTool {
 
 	public function name() {
-		return 'oc_save_query';
+		return 'fm_save_query';
 	}
 
 	public function description() {

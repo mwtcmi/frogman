@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class ListPaging extends AbstractTool {
-	public function name() { return 'oc_list_paging'; }
+	public function name() { return 'fm_list_paging'; }
 	public function description() { return 'List all paging/intercom groups.'; }
 	public function validate($params) { return true; }
 	public function requiredPermission() { return null; }

@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class ValidatePbx extends AbstractTool {
-	public function name() { return 'oc_validate'; }
+	public function name() { return 'fm_validate'; }
 	public function description() { return 'Run a security validation scan on the PBX.'; }
 	public function validate($params) { return true; }
 	public function permissionLevel() { return self::PERM_ADMIN; }

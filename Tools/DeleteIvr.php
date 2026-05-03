@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class DeleteIvr extends AbstractTool {
-	public function name() { return 'oc_delete_ivr'; }
+	public function name() { return 'fm_delete_ivr'; }
 	public function description() { return 'Delete an IVR. Params: id (required). Requires confirm:true.'; }
 	public function validate($params) {
 		if (empty($params['id'])) return 'Parameter "id" is required';

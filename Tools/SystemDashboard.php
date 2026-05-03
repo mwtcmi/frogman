@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class SystemDashboard extends AbstractTool {
-	public function name() { return 'oc_system_dashboard'; }
+	public function name() { return 'fm_system_dashboard'; }
 	public function description() { return 'Quick system status dashboard — calls, extensions, trunks, notifications, uptime.'; }
 	public function validate($params) { return true; }
 	public function execute($params, $context) {

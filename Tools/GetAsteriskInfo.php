@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class GetAsteriskInfo extends AbstractTool {
-	public function name() { return 'oc_get_asterisk_info'; }
+	public function name() { return 'fm_get_asterisk_info'; }
 	public function description() { return 'Get Asterisk system info — uptime, version, active channels, registrations.'; }
 	public function validate($params) { return true; }
 	public function requiredPermission() { return null; }

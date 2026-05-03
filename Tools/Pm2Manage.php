@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class Pm2Manage extends AbstractTool {
-	public function name() { return 'oc_pm2_manage'; }
+	public function name() { return 'fm_pm2_manage'; }
 	public function description() { return 'Manage a PM2 process. Params: action (restart/stop, required), name (process name, required). Requires confirm:true.'; }
 	public function validate($params) {
 		if (empty($params['action'])) return 'Parameter "action" is required (restart or stop)';

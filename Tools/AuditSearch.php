@@ -6,7 +6,7 @@ require_once __DIR__ . '/AbstractTool.php';
 class AuditSearch extends AbstractTool {
 
 	public function name() {
-		return 'oc_audit_search';
+		return 'fm_audit_search';
 	}
 
 	public function description() {

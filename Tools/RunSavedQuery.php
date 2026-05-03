@@ -6,7 +6,7 @@ require_once __DIR__ . '/AbstractTool.php';
 class RunSavedQuery extends AbstractTool {
 
 	public function name() {
-		return 'oc_run_saved_query';
+		return 'fm_run_saved_query';
 	}
 
 	public function description() {

@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class TransferCall extends AbstractTool {
-	public function name() { return 'oc_transfer_call'; }
+	public function name() { return 'fm_transfer_call'; }
 	public function description() { return 'Transfer a live call to another extension. Params: channel (required), dest (destination extension, required). Requires confirm:true.'; }
 	public function validate($params) {
 		if (empty($params['channel'])) return 'Parameter "channel" is required';

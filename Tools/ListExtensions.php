@@ -6,7 +6,7 @@ require_once __DIR__ . '/AbstractTool.php';
 class ListExtensions extends AbstractTool {
 
 	public function name() {
-		return 'oc_list_extensions';
+		return 'fm_list_extensions';
 	}
 
 	public function description() {

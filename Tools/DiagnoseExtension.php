@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class DiagnoseExtension extends AbstractTool {
-	public function name() { return 'oc_diagnose_extension'; }
+	public function name() { return 'fm_diagnose_extension'; }
 	public function description() { return 'Composite SIP diagnostic for an extension — runs endpoint health, qualify, active calls, and recent CDR in one shot. Params: ext (required).'; }
 
 	public function validate($params) {

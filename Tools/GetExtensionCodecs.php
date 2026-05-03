@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class GetExtensionCodecs extends AbstractTool {
-	public function name() { return 'oc_get_extension_codecs'; }
+	public function name() { return 'fm_get_extension_codecs'; }
 	public function description() { return 'Get configured codecs for an extension. Params: ext (required).'; }
 	public function validate($params) { if (empty($params['ext'])) return 'Parameter "ext" is required';
 		return true; }

@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class ListPermissions extends AbstractTool {
-	public function name() { return 'oc_list_permissions'; }
+	public function name() { return 'fm_list_permissions'; }
 	public function description() { return 'List all Frogman user permission levels.'; }
 	public function validate($params) { return true; }
 	public function requiredPermission() { return null; }

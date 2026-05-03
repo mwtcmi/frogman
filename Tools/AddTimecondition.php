@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class AddTimecondition extends AbstractTool {
-	public function name() { return 'oc_add_time_condition'; }
+	public function name() { return 'fm_add_time_condition'; }
 	public function description() { return 'Create a time condition. Params: name (required), timegroup (time group ID, required), truegoto (destination when matched, required), falsegoto (destination when not matched, required). Requires confirm:true.'; }
 	public function validate($params) {
 		if (empty($params['name'])) return 'Parameter "name" is required';

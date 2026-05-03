@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class DisableVoicemail extends AbstractTool {
-	public function name() { return 'oc_disable_voicemail'; }
+	public function name() { return 'fm_disable_voicemail'; }
 	public function description() { return 'Disable voicemail for an extension. Params: ext (required). Requires confirm:true.'; }
 	public function validate($params) {
 		if (empty($params['ext'])) return 'Parameter "ext" is required';

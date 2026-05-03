@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class DeleteNotification extends AbstractTool {
-	public function name() { return 'oc_delete_notification'; }
+	public function name() { return 'fm_delete_notification'; }
 	public function description() { return 'Delete a system notification. Params: module (required), id (required). Requires confirm:true.'; }
 	public function validate($params) {
 		if (empty($params['module'])) return 'Parameter "module" is required';

@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class ShowDialplanContext extends AbstractTool {
-	public function name() { return 'oc_show_context'; }
+	public function name() { return 'fm_show_context'; }
 	public function description() { return 'Show any Asterisk dialplan context (not just custom). Params: name (required).'; }
 	public function validate($params) {
 		if (empty($params['name'])) return 'Parameter "name" is required';

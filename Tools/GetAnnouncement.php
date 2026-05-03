@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class GetAnnouncement extends AbstractTool {
-	public function name() { return 'oc_get_announcement'; }
+	public function name() { return 'fm_get_announcement'; }
 	public function description() { return 'Get announcement details by ID. Params: id (required).'; }
 	public function validate($params) {
 		if (empty($params['id'])) return 'Parameter "id" is required';

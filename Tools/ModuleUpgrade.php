@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class ModuleUpgrade extends AbstractTool {
-	public function name() { return 'oc_module_upgrade'; }
+	public function name() { return 'fm_module_upgrade'; }
 	public function description() { return 'Upgrade a FreePBX module. Params: name (required, or "all" for all modules). Requires confirm:true.'; }
 	public function validate($params) {
 		if (empty($params['name'])) return 'Parameter "name" is required';

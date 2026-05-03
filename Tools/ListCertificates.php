@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class ListCertificates extends AbstractTool {
-	public function name() { return 'oc_list_certificates'; }
+	public function name() { return 'fm_list_certificates'; }
 	public function description() { return 'List all SSL/TLS certificates managed by Certificate Manager.'; }
 	public function validate($params) { return true; }
 	public function requiredPermission() { return null; }
