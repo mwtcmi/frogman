@@ -8,7 +8,7 @@ Frogman is a FreePBX module (`/var/www/html/admin/modules/frogman/`) that provid
 
 1. **This is a proper FreePBX module following BMO conventions.** Don't invent patterns — look at existing modules (core, announcement, api) for reference.
 2. **Never modify other modules' code or files.** Everything stays in the `frogman/` directory.
-3. **Database rules:** `fm_*` tables are ours to read/write freely. Other modules' tables: read OK, write only through BMO or GraphQL.
+3. **Database rules:** `oc_*` tables are ours to read/write freely. Other modules' tables: read OK, write only through BMO or GraphQL.
 4. **No arbitrary code execution.** The tool surface is a fixed allowlist. No user-supplied PHP, SQL, or shell.
 5. **Write tools require `confirm: true`** or they return a dry-run preview.
 6. **Audit everything.** Every tool execution gets an intent record before and outcome record after.
@@ -19,7 +19,7 @@ Frogman is a FreePBX module (`/var/www/html/admin/modules/frogman/`) that provid
 2. Direct DB reads (diagnostics/reporting)
 3. BMO PHP calls (fallback)
 4. fwconsole wrappers (system ops only)
-5. Direct DB writes (fm_* tables only)
+5. Direct DB writes (oc_* tables only)
 
 ## How to add a new tool
 

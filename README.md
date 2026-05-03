@@ -64,19 +64,19 @@ Tools internally route by this priority:
 2. **AMI commands** — live call control, channel operations
 3. **Direct DB reads** — diagnostics and reporting
 4. **fwconsole wrappers** — system ops only (reload, restart, module admin, backup)
-5. **Direct DB writes** — `fm_*` tables only
+5. **Direct DB writes** — `oc_*` tables only
 
 ### Database
 
-Frogman owns five tables (prefixed `fm_*`):
+Frogman owns five tables (prefixed `oc_*`):
 
 | Table | Purpose |
 |-------|---------|
-| `fm_audit_log` | Full audit trail of every tool execution |
-| `fm_sessions` | Chat session tracking |
-| `fm_saved_queries` | Saved GraphQL queries |
-| `fm_jobs` | Async job queue (future use) |
-| `fm_aliases` | Command aliases |
+| `oc_audit_log` | Full audit trail of every tool execution |
+| `oc_sessions` | Chat session tracking |
+| `oc_saved_queries` | Saved GraphQL queries |
+| `oc_jobs` | Async job queue (future use) |
+| `oc_aliases` | Command aliases |
 
 Reads from other modules' tables are fine. Writes to other modules go through BMO or GraphQL — never direct SQL.
 
