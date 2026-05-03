@@ -1,6 +1,10 @@
-# Frogman
+# Frogman 🐸
 
-Frogman is a module for FreePBX that gives you complete PBX control through natural language from a web console, chat platforms, MCP, or any API client. 210 tools covering extensions, routing, queues, trunks, live call control, SIP diagnostics, dialplan generation, and system management. Built entirely on FreePBX's native interfaces (BMO, GraphQL, AMI, fwconsole). Every action is validated, permission-gated, audit-logged, and requires confirmation before making changes.
+**Frogman is an MCP server for FreePBX.** It gives any AI — Claude, OpenClaw, or any MCP-compatible client — full control of a PBX through 211 tools.
+
+Connect via MCP and ask "why can't extension 101 make calls?" — Frogman runs live diagnostics, searches its knowledge base, and hands the AI everything it needs to answer.
+
+Also includes a web console, CLI chat, and HTTP API for humans and bots. Built entirely on FreePBX's native interfaces (BMO, GraphQL, AMI, fwconsole). Every action is validated, permission-gated, audit-logged, and requires confirmation before making changes.
 
 ## Requirements
 
