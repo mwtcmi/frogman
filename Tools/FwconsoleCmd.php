@@ -7,10 +7,15 @@ class FwconsoleCmd extends AbstractTool {
 	public function description() { return 'Run an fwconsole command. Params: args (required, e.g. "ma list" or "sa info"). Requires confirm:true for non-read commands.'; }
 	public function validate($params) {
 		if (empty($params['args'])) return 'Parameter "args" is required';
-		// Block dangerous commands
-		$args = strtolower($params['args']);
-		if (preg_match('/rm\s|del\s|drop\s|truncate/i', $args)) {
-			return 'Dangerous command blocked';
+		$args = $params['args'];
+		// Block shell injection characters
+		if (preg_match('/[;&|`$(){}]/', $args)) {
+			return 'Shell metacharacters are not allowed';
+		}
+		// Whitelist: only allow known safe fwconsole subcommands
+		$allowed = '/^(ma\s+(list|install|uninstall|enable|disable|upgrade|upgradeall|download)|sa\s+(info|update)|pm2|reload|restart|start|stop|chown|status|--version|-V|context|certificates)/i';
+		if (!preg_match($allowed, $args)) {
+			return 'Command not in allowed list. Use specific Frogman tools instead.';
 		}
 		return true;
 	}
@@ -19,13 +24,15 @@ class FwconsoleCmd extends AbstractTool {
 	public function execute($params, $context) {
 		$args = $params['args'];
 		$confirm = !empty($params['confirm']) && $params['confirm'] === true;
-		// Read-only commands don't need confirm
-		$readOnly = preg_match('/^(ma\s+list|sa\s+info|pm2\s+--list|status|--version|-V)/i', $args);
+		$readOnly = preg_match('/^(ma\s+list|sa\s+info|pm2|status|--version|-V|context)/i', $args);
 		if (!$readOnly && !$confirm) {
-			return ['dry_run' => true, 'message' => "Would run: fwconsole {$args}. Reply yes to confirm."];
+			return ['dry_run' => true, 'message' => "Would run: fwconsole {$args}."];
 		}
 		$output = []; $exitCode = 0;
-		exec('/usr/sbin/fwconsole ' . $args . ' 2>&1', $output, $exitCode);
+		// Escape each argument individually
+		$parts = preg_split('/\s+/', $args);
+		$escaped = implode(' ', array_map('escapeshellarg', $parts));
+		exec('/usr/sbin/fwconsole ' . $escaped . ' 2>&1', $output, $exitCode);
 		return ['command' => "fwconsole {$args}", 'exit_code' => $exitCode, 'output' => implode("\n", $output)];
 	}
 }
