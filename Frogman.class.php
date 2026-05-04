@@ -1392,6 +1392,16 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 				}
 				return implode("\n", $lines);
 
+			case 'fm_get_disk_space':
+				$lines = ["💾 **Disk Space:**"];
+				foreach ($data as $dev => $info) {
+					if (!is_array($info)) continue;
+					$pct = (int)($info['usepct'] ?? 0);
+					$icon = $pct > 90 ? '🔴' : ($pct > 75 ? '🟡' : '🟢');
+					$lines[] = "  {$icon} `{$info['mountpoint']}` — {$info['used']}/{$info['size']} ({$info['usepct']}) — {$info['avail']} free";
+				}
+				return implode("\n", $lines);
+
 			case 'fm_system_dashboard':
 				$lines = ["📊 **System Status**"];
 				if (!empty($data['version'])) $lines[] = "  📦 Asterisk `{$data['version']}`";
