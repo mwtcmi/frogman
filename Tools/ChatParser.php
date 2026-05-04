@@ -1170,6 +1170,15 @@ class ChatParser {
 		$result = self::fuzzyMatch($msg, $lower, $sessionId);
 		if ($result) return $result;
 
+		// Questions ending with ? — try the knowledge base
+		if (substr(trim($msg), -1) === '?') {
+			$query = rtrim(trim($msg), '?');
+			$query = preg_replace('/^(what|how|why|where|when|can|does|is|are|do)\s+/i', '', $query);
+			if (strlen($query) > 2) {
+				return ['tool' => 'fm_search_docs', 'params' => ['query' => $query]];
+			}
+		}
+
 		return ['response' => "I don't understand that. Type **help** to see what I can do."];
 	}
 
