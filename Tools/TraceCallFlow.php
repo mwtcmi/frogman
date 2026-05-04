@@ -121,10 +121,11 @@ class TraceCallFlow extends AbstractTool {
 			}
 
 		} elseif (strpos($context, 'ivr-') !== false) {
-			$ivrId = preg_replace('/[^0-9]/', '', $exten);
+			// IVR ID is in the context name (ivr-8), not the extension (s)
+			$ivrId = preg_replace('/[^0-9]/', '', $context);
 			$node = 'n' . $nodeId++;
 			$ivrInfo = $this->getIvrInfo($ivrId, $db);
-			$label = $ivrInfo ? "IVR: {$ivrInfo['name']}" : "IVR: {$ivrId}";
+			$label = $ivrInfo ? "IVR: " . ($ivrInfo['name'] ?? $ivrId) : "IVR: {$ivrId}";
 			$nodes[] = ['id' => $node, 'label' => $label, 'type' => 'ivr'];
 			$edges[] = ['from' => $fromNode, 'to' => $node, 'label' => ''];
 			if ($ivrInfo) {
@@ -135,7 +136,7 @@ class TraceCallFlow extends AbstractTool {
 			$tcId = preg_replace('/[^0-9]/', '', $exten);
 			$node = 'n' . $nodeId++;
 			$tcInfo = $this->getTimeconditionInfo($tcId, $db);
-			$label = $tcInfo ? "Time: {$tcInfo['name']}" : "Time Condition: {$tcId}";
+			$label = $tcInfo ? "Time: " . ($tcInfo['name'] ?? $tcInfo['displayname'] ?? $tcId) : "Time Condition: {$tcId}";
 			$nodes[] = ['id' => $node, 'label' => $label, 'type' => 'timecondition'];
 			$edges[] = ['from' => $fromNode, 'to' => $node, 'label' => ''];
 			if ($tcInfo) {
