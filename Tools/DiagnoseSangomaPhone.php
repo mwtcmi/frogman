@@ -22,9 +22,12 @@ class DiagnoseSangomaPhone extends AbstractTool {
 		$issues = [];
 
 		// 1. EPM mapping — does this ext have a Sangoma phone provisioned?
+		// EPM keys by full identifier ("101-1"), signature ($ext, $orderby, $detail),
+		// wraps single results in [0 => row].
 		$mapping = null;
 		try {
-			$mapping = $endpoint->endpointGetMapping($ext);
+			$rows = $endpoint->endpointGetMapping("{$ext}-1", '', true) ?: [];
+			$mapping = $rows[0] ?? null;
 		} catch (\Throwable $e) {
 			$mapping = null;
 		}
@@ -44,16 +47,25 @@ class DiagnoseSangomaPhone extends AbstractTool {
 			return $result;
 		}
 
-		// 2. License assignment
-		$licensed = null;
+		// 2. License coverage — endpointCheckLicense() returns system-wide brand counts:
+		//    ['sangoma' => N, 'digium' => M] — phones-of-that-brand currently licensed.
+		//    A phone is "covered" if its brand has at least one license slot in use.
+		$licCounts = null;
 		try {
-			$licensed = $endpoint->endpointCheckLicense($ext);
+			$licCounts = $endpoint->endpointCheckLicense();
 		} catch (\Throwable $e) {
-			$licensed = ['error' => $e->getMessage()];
+			$licCounts = ['error' => $e->getMessage()];
 		}
-		$result['checks']['license'] = $licensed;
-		if ($licensed === false || (is_array($licensed) && empty($licensed['licensed']) && empty($licensed['valid']))) {
-			$issues[] = 'No DPMA license assigned';
+		$brandKey = (strpos($brand, 'digium') !== false) ? 'digium' : 'sangoma';
+		$brandCount = is_array($licCounts) ? (int)($licCounts[$brandKey] ?? 0) : 0;
+		$result['checks']['license'] = [
+			'counts' => $licCounts,
+			'brand' => $brandKey,
+			'brand_count' => $brandCount,
+			'covered' => $brandCount > 0,
+		];
+		if ($brandCount === 0) {
+			$issues[] = "No {$brandKey} license slots in use system-wide";
 		}
 
 		// 3. SIP registration

@@ -47,7 +47,10 @@ class GetSangomaPhone extends AbstractTool {
 		$contacts = [];
 		$endpoint = \FreePBX::Endpoint();
 		try {
-			$mapping = $endpoint->endpointGetMapping($ext) ?: null;
+			// EPM signature: endpointGetMapping($ext, $orderby, $detail). EPM keys by full
+			// identifier ("101-1") and wraps single results in [0 => row].
+			$rows = $endpoint->endpointGetMapping($identifier, '', true) ?: [];
+			$mapping = $rows[0] ?? null;
 		} catch (\Throwable $e) {}
 		try {
 			$contacts = $endpoint->getpjsipAORContactIpsByExten($ext) ?: [];

@@ -865,6 +865,113 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 				if (!empty($q['Response'])) $lines[] = "  Qualify: {$q['Response']} — " . ($q['Message'] ?? '');
 				return implode("\n", $lines);
 
+			case 'fm_list_sangoma_phones':
+				if (empty($data['phones'])) return "📞 No Sangoma phones registered with DPMA.";
+				$lines = ["📞 **Sangoma phones** ({$data['count']}):", ""];
+				foreach ($data['phones'] as $p) {
+					$id = $p['identifier'] ?? '?';
+					$ext = $p['ext'] ?? null;
+					$header = $ext
+						? "📞 {{cmd:sangoma phone {$ext}|Sangoma phone {$ext}}} ({$id})"
+						: "📞 {$id}";
+					$lines[] = $header;
+					if (!empty($p['name'])) $lines[] = "  Name: {$p['name']}";
+					if (!empty($p['model'])) $lines[] = "  Model: {$p['model']}";
+					if (!empty($p['mac']) && $p['mac'] !== '<none>') $lines[] = "  MAC: {$p['mac']}";
+					if (isset($p['registered'])) {
+						if ($p['registered']) {
+							$cnt = $p['contact_count'] ?? 1;
+							$lines[] = "  Registered: ✓ yes ({$cnt} contact" . ($cnt === 1 ? '' : 's') . ")";
+						} else {
+							$lines[] = "  Registered: ✗ no";
+						}
+					}
+					$lines[] = "";
+				}
+				return rtrim(implode("\n", $lines));
+
+			case 'fm_get_sangoma_phone':
+				if (empty($data['known_to_dpma'])) {
+					return "📞 DPMA does not know about phone {$data['extension']} ({$data['identifier']}).";
+				}
+				$p = $data['parsed'] ?? [];
+				$reg = $data['sip_registration'] ?? [];
+				$lines = ["📞 **Sangoma phone {$data['extension']}** ({$data['identifier']})"];
+				if (!empty($p['full_name'])) $lines[] = "  Name: {$p['full_name']}";
+				if (!empty($p['mac']) && $p['mac'] !== '<none>') $lines[] = "  MAC: {$p['mac']}";
+				if (!empty($p['active_ringtone'])) $lines[] = "  Ringtone: {$p['active_ringtone']}";
+				if (!empty($p['configfile'])) $lines[] = "  Config: {$p['configfile']}";
+				$lines[] = "  Registered: " . (!empty($reg['registered']) ? "✓ yes (" . count($reg['contacts']) . " contact" . (count($reg['contacts']) === 1 ? '' : 's') . ")" : "✗ no");
+				if (!empty($data['epm_mapping'])) {
+					$m = $data['epm_mapping'];
+					$brand = $m['brand'] ?? $m['vendor'] ?? '';
+					$model = $m['model'] ?? '';
+					if ($brand || $model) $lines[] = "  EPM: {$brand} {$model}";
+				}
+				return implode("\n", $lines);
+
+			case 'fm_diagnose_sangoma_phone':
+				$lines = ["📞 **Diagnose Sangoma {$data['extension']}**"];
+				if (!empty($data['summary'])) $lines[] = "  " . $data['summary'];
+				$c = $data['checks'] ?? [];
+				if (!empty($c['epm_mapping']) && empty($c['epm_mapping']['status'])) {
+					$lines[] = "  Mapping: ✓";
+				} else {
+					$lines[] = "  Mapping: ✗ not provisioned in EPM";
+				}
+				if (isset($c['license'])) {
+					$lic = !empty($c['license']['covered']);
+					$brand = $c['license']['brand'] ?? '';
+					$count = $c['license']['brand_count'] ?? 0;
+					$badge = $lic ? "✓ ({$brand}: {$count})" : "✗ no {$brand} licenses in use";
+					$lines[] = "  License: {$badge}";
+				}
+				if (isset($c['sip_registration'])) {
+					$lines[] = "  Registered: " . (!empty($c['sip_registration']['registered']) ? '✓' : '✗');
+				}
+				if (isset($c['dpma_state'])) {
+					$lines[] = "  DPMA aware: " . (!empty($c['dpma_state']['known_to_dpma']) ? '✓' : '✗');
+				}
+				if (isset($c['firmware_audit']) && $c['firmware_audit']['current']) {
+					$utd = $c['firmware_audit']['up_to_date'];
+					$badge = $utd === true ? '✓' : ($utd === false ? '⚠️ out of date' : '?');
+					$lines[] = "  Firmware: {$c['firmware_audit']['current']} {$badge}";
+				}
+				if (isset($c['dpma_alerts']) && $c['dpma_alerts']['count'] > 0) {
+					$lines[] = "  ⚠️ DPMA alerts: {$c['dpma_alerts']['count']}";
+				}
+				return implode("\n", $lines);
+
+			case 'fm_dpma_alerts':
+				if (empty($data['alerts']) || $data['count'] === 0) {
+					$f = !empty($data['filter']) ? " for ext {$data['filter']}" : '';
+					return "📞 No DPMA alerts{$f}.";
+				}
+				$lines = ["⚠️ **DPMA alerts** ({$data['count']}):"];
+				foreach ($data['alerts'] as $a) $lines[] = "  {$a}";
+				return implode("\n", $lines);
+
+			case 'fm_dpma_license_status':
+				$valid = !empty($data['valid']);
+				$badge = $valid ? '✓' : '✗';
+				$line1 = "📞 **DPMA License**: {$badge} " . ($data['status_line'] ?? ($valid ? 'valid' : 'unknown'));
+				$lines = [$line1];
+				if (!empty($data['epm_licensed']) && is_array($data['epm_licensed'])) {
+					$ep = $data['epm_licensed'];
+					if (isset($ep['epm']) || isset($ep['ucp'])) {
+						$lines[] = "  EPM: " . (!empty($ep['epm']) ? '✓' : '✗') . "  UCP: " . (!empty($ep['ucp']) ? '✓' : '✗');
+					}
+				}
+				return implode("\n", $lines);
+
+			case 'fm_reboot_sangoma_phone':
+				if (!empty($data['error'])) return "✗ {$data['error']}";
+				if (!empty($data['dry_run'])) {
+					$ph = $data['phone'] ?? [];
+					return "📞 **Reboot preview** — ext {$ph['ext']} ({$ph['model']}). Reply **yes** to confirm. Phone will be unavailable ~30s.";
+				}
+				return "📞 " . ($data['message'] ?? 'Reboot NOTIFY sent.');
+
 			case 'fm_pjsip_show_channels':
 				if ($data['channel_count'] === 0) {
 					return "No active PJSIP channels.";

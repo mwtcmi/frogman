@@ -21,10 +21,12 @@ class RebootSangomaPhone extends AbstractTool {
 
 		$endpoint = \FreePBX::Endpoint();
 
-		// Verify the phone is actually a Sangoma phone before we'd reboot it
+		// Verify the phone is actually a Sangoma phone before we'd reboot it.
+		// EPM signature: endpointGetMapping($ext, $orderby, $detail); single result in [0].
 		$mapping = null;
 		try {
-			$mapping = $endpoint->endpointGetMapping($ext);
+			$rows = $endpoint->endpointGetMapping("{$ext}-1", '', true) ?: [];
+			$mapping = $rows[0] ?? null;
 		} catch (\Throwable $e) {
 			$mapping = null;
 		}
