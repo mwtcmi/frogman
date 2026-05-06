@@ -505,7 +505,7 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 			case 'fm_dialplan_remove':
 				return $data['message'] ?? 'Context removed.';
 
-			case "oc_list_misc_dests":
+			case "fm_list_misc_dests":
 				if (empty($data["destinations"])) {
 					return "No misc destinations found.";
 				}
@@ -1284,7 +1284,7 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 				$lines[] = "  Catalog: `GET https://{$ip}/admin/ajax.php?module=frogman&command=catalog`";
 				$lines[] = "  Execute: `POST https://{$ip}/admin/ajax.php?module=frogman&command=tool`";
 				$lines[] = "  Header: `X-Frogman-Token: <token>`";
-				$lines[] = "  Body: `{\"tool\":\"oc_list_extensions\",\"params\":{}}`";
+				$lines[] = "  Body: `{\"tool\":\"fm_list_extensions\",\"params\":{}}`";
 				$lines[] = "\nGenerate a token: `create token for mybot with read`";
 				return implode("\n", $lines);
 

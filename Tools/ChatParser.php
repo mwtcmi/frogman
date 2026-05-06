@@ -962,7 +962,7 @@ class ChatParser {
 		if (preg_match('/^(install|uninstall|enable|disable|upgrade)\s+module\s+(\S+)$/i', $msg, $m)) {
 			$action = strtolower($m[1]);
 			$name = $m[2];
-			$tool = "oc_module_{$action}";
+			$tool = "fm_module_{$action}";
 			$params = ['name' => $name];
 			self::setPending($sessionId, $tool, $params);
 			return ['tool' => $tool, 'params' => $params];
