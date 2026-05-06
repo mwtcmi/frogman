@@ -16,6 +16,15 @@
 
 	<div class="oc-sidebar">
 		<div class="oc-sidebar-section">
+			<div class="oc-sidebar-header">Wizards</div>
+			<div class="oc-sidebar-body">
+				<div class="oc-guide-group">
+					<button class="oc-quick-btn oc-write-btn" data-cmd="add inbound route">add inbound route</button>
+					<button class="oc-quick-btn oc-write-btn" data-cmd="set follow me">set follow me</button>
+				</div>
+			</div>
+		</div>
+		<div class="oc-sidebar-section">
 			<div class="oc-sidebar-header">Commands</div>
 			<div class="oc-sidebar-body">
 				<div class="oc-guide-group">
