@@ -7,6 +7,11 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 	private $db;
 	private $tools = [];
 	private $toolsLoaded = false;
+	// Populated by authenticateRequest. ['user' => string, 'level' => string|null]
+	// 'level' is set when the auth source carries an explicit permission level
+	// (token's level column, or localhost-trust = admin). null means "resolve via
+	// oc_permissions / FreePBX sections from the username".
+	private $authContext = null;
 
 	public function __construct($freepbx = null) {
 		parent::__construct($freepbx);
@@ -55,31 +60,44 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 	}
 
 	/**
-	 * Check if the current request is authenticated — either via FreePBX session or API token.
-	 * Returns the username or throws an exception.
+	 * Authenticate the current request. Stashes the result in $this->authContext
+	 * (which runTool reads to enforce permissions) and returns the username for
+	 * back-compat with callers that ignored the original return value.
+	 *
+	 * Order matters: explicit auth (token, session) wins over the localhost
+	 * fallback so a localhost caller that bothered to send a token gets the
+	 * token's level rather than blanket admin.
 	 */
 	private function authenticateRequest() {
-		// 1. Localhost always allowed (same as FreePBX default)
-		$ip = $_SERVER['REMOTE_ADDR'] ?? '';
-		if (in_array($ip, ['127.0.0.1', '::1'])) {
-			return 'localhost';
-		}
-
-		// 2. Valid FreePBX session
-		if (!empty($_SESSION['AMP_user'])) {
-			return $_SESSION['AMP_user']->username ?? 'session';
-		}
-
-		// 3. API token via header
+		// 1. API token via header — explicit identity, carries its own level.
+		// If the caller bothered to send a token we treat it as their chosen auth
+		// method: a bad/inactive one fails outright rather than silently falling
+		// through to localhost trust.
 		$token = $_SERVER['HTTP_X_FROGMAN_TOKEN'] ?? '';
 		if (!empty($token)) {
-			$db = $this->db;
-			$sth = $db->prepare("SELECT username, level FROM oc_api_tokens WHERE token = ? AND active = 1");
+			$sth = $this->db->prepare("SELECT username, level FROM oc_api_tokens WHERE token = ? AND active = 1");
 			$sth->execute([$token]);
 			$row = $sth->fetch(\PDO::FETCH_ASSOC);
 			if ($row) {
-				return $row['username'];
+				$this->authContext = ['user' => $row['username'], 'level' => $row['level']];
+				return $this->authContext['user'];
 			}
+			throw new \Exception('Invalid or inactive API token.');
+		}
+
+		// 2. Valid FreePBX session — username is known, level resolves via oc_permissions / sections.
+		if (!empty($_SESSION['AMP_user'])) {
+			$user = $_SESSION['AMP_user']->username ?? 'session';
+			$this->authContext = ['user' => $user, 'level' => null];
+			return $user;
+		}
+
+		// 3. Localhost fallback — anyone who can reach 127.0.0.1 already has filesystem
+		// access to this module, so trust them as admin. Matches FreePBX's own local-Apache model.
+		$ip = $_SERVER['REMOTE_ADDR'] ?? '';
+		if (in_array($ip, ['127.0.0.1', '::1'])) {
+			$this->authContext = ['user' => 'localhost', 'level' => 'admin'];
+			return 'localhost';
 		}
 
 		throw new \Exception('Not authenticated. Provide X-Frogman-Token header or connect from localhost.');
@@ -2285,11 +2303,21 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 			}
 		}
 
-		// Frogman permission level check (read/write/admin)
+		// Frogman permission level check (read/write/admin).
+		// Prefer the explicit level from authContext (token's own level, or localhost-trust)
+		// over the session-username → oc_permissions resolver, so an admin-labeled token
+		// actually grants admin regardless of source IP.
 		$requiredLevel = method_exists($tool, 'permissionLevel') ? $tool->permissionLevel() : 'read';
-		$username = $this->getSessionUsername($sessionId);
-		if ($username) {
-			$userLevel = $this->getUserPermissionLevel($username);
+		$userLevel = null;
+		if (!empty($this->authContext['level'])) {
+			$userLevel = $this->authContext['level'];
+		} else {
+			$username = $this->getSessionUsername($sessionId);
+			if ($username) {
+				$userLevel = $this->getUserPermissionLevel($username);
+			}
+		}
+		if ($userLevel) {
 			$levelHierarchy = ['read' => 0, 'write' => 1, 'admin' => 2];
 			$required = $levelHierarchy[$requiredLevel] ?? 0;
 			$granted = $levelHierarchy[$userLevel] ?? 0;
