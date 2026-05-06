@@ -92,15 +92,74 @@ class ChatParser {
 		}
 	}
 
+	// Multi-step input wizard. $prompts is an ordered list of:
+	//   ['param' => 'ext', 'prompt' => 'Which extension?']
+	//   ['param' => 'ringtime', 'prompt' => '...', 'skip_default' => 20]
+	// A prompt with skip_default lets the user type "skip" to take the default;
+	// without skip_default, "skip" cancels the wizard. After all prompts are answered
+	// the tool runs WITHOUT confirm:true so its dry-run preview surfaces.
+	public static function setInputWizard($sessionId, $tool, $params, $prompts) {
+		$db = self::getDb();
+		$data = json_encode([
+			'tool' => $tool,
+			'params' => $params,
+			'type' => 'wizard',
+			'prompts' => $prompts,
+		]);
+		$sth = $db->prepare("SELECT id FROM oc_sessions WHERE id = ?");
+		$sth->execute([$sessionId]);
+		if ($sth->fetch()) {
+			$sth = $db->prepare("UPDATE oc_sessions SET context = ?, status = 'pending_input', last_activity = ? WHERE id = ?");
+			$sth->execute([$data, time(), $sessionId]);
+		} else {
+			$sth = $db->prepare("INSERT INTO oc_sessions (id, user_id, started_at, last_activity, context, status) VALUES (?, NULL, ?, ?, ?, 'pending_input')");
+			$sth->execute([$sessionId, time(), time(), $data]);
+		}
+	}
+
 	public static function parse($message, $sessionId = 'default', $skipFuzzy = false) {
 		$msg = trim($message);
 		$lower = strtolower($msg);
 
-		// ── Free-text Input Prompt (e.g. "what email?") ──
+		// ── Free-text Input Prompt (e.g. "what email?") + Multi-step Wizard ──
 		// Must come BEFORE yes/no so a yes-as-value still works as input.
 		$inputPending = self::getInputPending($sessionId);
 		if ($inputPending) {
-			if (preg_match('/^(no|cancel|skip|nevermind|nope|abort)$/i', $msg)) {
+			$isSkip = (bool)preg_match('/^(no|cancel|skip|nevermind|nope|abort)$/i', $msg);
+			$isWizard = ($inputPending['type'] ?? 'input') === 'wizard';
+
+			if ($isWizard) {
+				$prompts = $inputPending['prompts'] ?? [];
+				$current = array_shift($prompts);
+				if (!$current) {
+					self::clearPending($sessionId);
+					return ['response' => 'Cancelled.'];
+				}
+				if ($isSkip) {
+					if (array_key_exists('skip_default', $current)) {
+						if ($current['skip_default'] !== null) {
+							$inputPending['params'][$current['param']] = $current['skip_default'];
+						}
+						// fall through to advance / finish
+					} else {
+						self::clearPending($sessionId);
+						return ['response' => 'OK, cancelled. (That step was required.)'];
+					}
+				} else {
+					$inputPending['params'][$current['param']] = $msg;
+				}
+				if (!empty($prompts)) {
+					self::setInputWizard($sessionId, $inputPending['tool'], $inputPending['params'], $prompts);
+					return ['response' => $prompts[0]['prompt']];
+				}
+				// All prompts answered — fire the tool WITHOUT confirm so its dry-run preview shows.
+				self::clearPending($sessionId);
+				self::setPending($sessionId, $inputPending['tool'], $inputPending['params']);
+				return ['tool' => $inputPending['tool'], 'params' => $inputPending['params']];
+			}
+
+			// Single-input flow (existing)
+			if ($isSkip) {
 				self::clearPending($sessionId);
 				return ['response' => 'OK, skipped.'];
 			}
@@ -323,6 +382,16 @@ class ChatParser {
 		}
 
 		// ── Follow Me ──
+		if (preg_match('/^(set|configure|enable|setup)\s+follow\s*me$/i', $msg)) {
+			$prompts = [
+				['param' => 'ext', 'prompt' => 'Which extension? (e.g. `1001`)'],
+				['param' => 'numbers', 'prompt' => "What numbers should ring? (comma-separated, e.g. `1001,5551234567`)"],
+				['param' => 'ringtime', 'prompt' => 'Ring time in seconds? (default 20, or `skip`)', 'skip_default' => null],
+				['param' => 'strategy', 'prompt' => 'Strategy? Options: `ringallv2-prim` (desk first, then external — default), `ringallv2`, `ringall-prim`, `ringall`, `hunt-prim`, `hunt`, `memoryhunt-prim`, `memoryhunt`, `firstnotonphone`, `firstavailable`. Or `skip` for default.', 'skip_default' => null],
+			];
+			self::setInputWizard($sessionId, 'fm_set_followme', [], $prompts);
+			return ['response' => $prompts[0]['prompt']];
+		}
 		if (preg_match('/^(set|configure|enable)\s+follow\s*me\s+(on\s+|for\s+)?(\d+)\s+(?:to\s+|ring\s+)?(.+)$/i', $msg, $m)) {
 			$params = ['ext' => $m[3], 'numbers' => trim($m[4])];
 			self::setPending($sessionId, 'fm_set_followme', $params);
@@ -1485,6 +1554,7 @@ class ChatParser {
 
 **Follow Me:**
   `set followme on 1001 to 1001,5551234567`
+  `set follow me` — guided wizard
   `clear followme on 1001`
 
 **Call Forward:**

@@ -10,7 +10,7 @@ class SetFollowme extends AbstractTool {
 	}
 
 	public function description() {
-		return 'Configure Follow Me for an extension. Params: ext (required), numbers (comma-separated list of numbers to ring), ringtime (seconds, default 20), strategy (ringallv2/ringall/hunt/memoryhunt/firstnotonphone). Requires confirm:true.';
+		return 'Configure Follow Me for an extension. Params: ext (required), numbers (comma-separated list of numbers to ring), ringtime (seconds, default 20), strategy (default ringallv2-prim — ring desk first then external; or ringallv2/ringall-prim/ringall/hunt-prim/hunt/memoryhunt-prim/memoryhunt/firstnotonphone/firstavailable). Requires confirm:true.';
 	}
 
 	public function validate($params) {
@@ -23,7 +23,13 @@ class SetFollowme extends AbstractTool {
 		if (empty($params['numbers'])) {
 			return 'Parameter "numbers" is required (comma-separated list of numbers to ring)';
 		}
-		$validStrategies = ['ringallv2', 'ringall', 'hunt', 'memoryhunt', 'firstnotonphone', 'firstavailable'];
+		$validStrategies = [
+			'ringallv2-prim', 'ringallv2',
+			'ringall-prim', 'ringall',
+			'hunt-prim', 'hunt',
+			'memoryhunt-prim', 'memoryhunt',
+			'firstnotonphone', 'firstavailable',
+		];
 		if (isset($params['strategy']) && !in_array($params['strategy'], $validStrategies)) {
 			return 'Invalid strategy. Must be one of: ' . implode(', ', $validStrategies);
 		}
@@ -39,6 +45,11 @@ class SetFollowme extends AbstractTool {
 		$ext = $params['ext'];
 		$confirm = !empty($params['confirm']) && $params['confirm'] === true;
 
+		// Findmefollow's BMO add() calls the global findmefollow_allusers() function defined
+		// in the module's functions.inc.php. CLI bootstrap loads it; HTTP/MCP doesn't —
+		// causing "undefined function" errors when this tool runs from chat. Load it explicitly.
+		$this->freepbx->Modules->loadFunctionsInc('findmefollow');
+
 		// Verify the extension exists
 		$user = $this->freepbx->Core->getUser($ext);
 		if (empty($user)) {
@@ -47,7 +58,7 @@ class SetFollowme extends AbstractTool {
 
 		$numbers = str_replace(',', '-', $params['numbers']);
 		$ringtime = isset($params['ringtime']) ? (int) $params['ringtime'] : 20;
-		$strategy = $params['strategy'] ?? 'ringallv2';
+		$strategy = $params['strategy'] ?? 'ringallv2-prim';
 
 		$preview = [
 			'action' => 'set_followme',

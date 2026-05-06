@@ -130,7 +130,7 @@ Reads from other modules' tables are fine. Writes to other modules go through BM
 
 | Tool | Description |
 |------|-------------|
-| `fm_set_followme` | Configure Follow Me for an extension **[confirm]** |
+| `fm_set_followme` | Configure Follow Me for an extension **[confirm]** — chat: `set followme on 1001 to 1001,5551234567`, or `set follow me` (guided wizard) |
 | `fm_clear_followme` | Remove Follow Me **[confirm]** |
 
 ### Call Forward & DND (5)
