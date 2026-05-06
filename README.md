@@ -1,6 +1,6 @@
 # Frogman 🐸
 
-**Headless PBX control through MCP and HTTP API.** Any AI, bot, or app connects and manages FreePBX through 221 tools. No GraphQL needed.
+**Headless PBX control through MCP and HTTP API.** Any AI, bot, or app connects and manages FreePBX through 222 tools. No GraphQL needed.
 
 Connect via MCP and ask "why can't extension 101 make calls?" — Frogman runs live diagnostics, searches its built-in knowledge base, and hands the AI everything it needs to answer.
 
@@ -235,13 +235,14 @@ Reads from other modules' tables are fine. Writes to other modules go through BM
 | `fm_list_moh` | List music on hold categories |
 | `fm_list_recordings` | List all system recordings |
 
-### System (8)
+### System (9)
 
 | Tool | Description |
 |------|-------------|
 | `fm_reload` | Apply config changes (checks active calls first) **[confirm]** |
 | `fm_backup_create` | Run a backup job by ID **[confirm]** |
-| `fm_module_list` | List all FreePBX modules |
+| `fm_module_list` | List FreePBX modules. Optional filters: `status`, `license` (commercial/gpl/gpl2/gpl3/agpl/other), `all`. Chat shows a clickable summary by default — chat: `list modules`, `list modules commercial`, `list all modules` |
+| `fm_check_upgrades` | Query online repos for module upgrades (~10s, network call) — chat: `check for upgrades` |
 | `fm_module_status` | Detailed status of a specific module |
 | `fm_get_asterisk_info` | Asterisk uptime, version, channels, registrations |
 | `fm_get_firewall_status` | Firewall and intrusion detection status |

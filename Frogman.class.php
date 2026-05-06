@@ -429,16 +429,37 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 			case 'fm_module_list':
 				if (empty($data['modules'])) return "No modules found.";
 				$upgCount = $data['upgrades_available'] ?? 0;
-				$grouped = ['Commercial' => [], 'GPLv2' => [], 'GPLv3+' => [], 'AGPLv3' => [], 'Other' => []];
-				foreach ($data['modules'] as $m) {
-					$lic = $m['license'] ?? 'Other';
-					$bucket = $grouped[$lic] ?? null;
-					if ($bucket === null) $lic = 'Other';
-					$grouped[$lic][] = $m;
+
+				// Summary view: counts per license bucket as clickable filters. Avoids dumping
+				// 100+ modules into chat when the user just typed "list modules".
+				if (($data['view'] ?? 'list') === 'summary') {
+					$buckets = ['Commercial' => 0, 'AGPLv3' => 0, 'GPLv3+' => 0, 'GPLv2' => 0, 'Other' => 0];
+					foreach ($data['modules'] as $m) {
+						$buckets[$m['bucket'] ?? 'Other']++;
+					}
+					$lines = ["**Modules** ({$data['count']} installed)"];
+					if ($upgCount > 0) {
+						$lines[0] .= " — ⬆️ {$upgCount} {{cmd:upgrade all modules|upgrade(s) available}}";
+					}
+					$lines[] = "\nFilter by license:";
+					$bucketKey = ['Commercial' => 'commercial', 'AGPLv3' => 'agpl', 'GPLv3+' => 'gpl3', 'GPLv2' => 'gpl2', 'Other' => 'other'];
+					foreach ($buckets as $name => $cnt) {
+						if ($cnt === 0) continue;
+						$key = $bucketKey[$name];
+						$lines[] = "  {{cmd:list modules {$key}|{$name} ({$cnt})}}";
+					}
+					$lines[] = "\n{{cmd:list all modules|Show all}} • {{cmd:check for upgrades|⬆️ Check for upgrades}}";
+					return implode("\n", $lines);
 				}
-				$header = "**Modules** ({$data['count']} installed)";
+
+				// List view: grouped by license. Used when the user filtered or asked for all.
+				$grouped = ['Commercial' => [], 'AGPLv3' => [], 'GPLv3+' => [], 'GPLv2' => [], 'Other' => []];
+				foreach ($data['modules'] as $m) {
+					$grouped[$m['bucket'] ?? 'Other'][] = $m;
+				}
+				$header = "**Modules** ({$data['count']} shown)";
 				if ($upgCount > 0) {
-					$header .= " — {$upgCount} {{cmd:upgrade all modules|upgrades available}}";
+					$header .= " — ⬆️ {$upgCount} {{cmd:upgrade all modules|upgrade(s) available}}";
 				}
 				$lines = ["{$header}:"];
 				foreach ($grouped as $license => $mods) {
@@ -452,6 +473,17 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 						$lines[] = "  {{cmd:module status {$m['name']}|{$m['name']}}} — v{$m['version']}{$upg}";
 					}
 				}
+				return implode("\n", $lines);
+
+			case 'fm_check_upgrades':
+				if (empty($data['upgrades'])) {
+					return "All modules are up-to-date. ✅";
+				}
+				$lines = ["**⬆️ Upgrades Available** ({$data['count']}):"];
+				foreach ($data['upgrades'] as $u) {
+					$lines[] = "  {{cmd:upgrade module {$u['name']}|⬆️ {$u['name']}}} — current v{$u['current_version']}";
+				}
+				$lines[] = "\n{{cmd:upgrade all modules|⬆️ Upgrade all}}";
 				return implode("\n", $lines);
 
 			case 'fm_audit_search':

@@ -754,8 +754,25 @@ class ChatParser {
 		}
 
 		// ── Modules ──
-		if (preg_match('/^(list|show)\s+(all\s+)?modules?$/i', $lower)) {
+		// "list all modules" / "list modules all" → full grouped list (escape hatch for the wall view)
+		if (preg_match('/^(list|show)\s+(all\s+modules?|modules?\s+all)$/i', $lower)) {
+			return ['tool' => 'fm_module_list', 'params' => ['all' => true]];
+		}
+		// "list modules <license-bucket>" → filter by license bucket
+		if (preg_match('/^(list|show)\s+modules?\s+(commercial|agpl|agplv3|agpl3|gpl|gpl2|gplv2|gpl3|gplv3|other)$/i', $lower, $m)) {
+			return ['tool' => 'fm_module_list', 'params' => ['license' => strtolower($m[2])]];
+		}
+		// "list modules enabled/disabled" → status filter
+		if (preg_match('/^(list|show)\s+modules?\s+(enabled|disabled)$/i', $lower, $m)) {
+			return ['tool' => 'fm_module_list', 'params' => ['status' => strtolower($m[2])]];
+		}
+		// "list modules" → summary view (counts per license, clickable buckets)
+		if (preg_match('/^(list|show)\s+modules?$/i', $lower)) {
 			return ['tool' => 'fm_module_list', 'params' => []];
+		}
+		// "check for upgrades" / "check upgrades" → online check (slow, ~10s) → fm_check_upgrades
+		if (preg_match('/^check\s+(for\s+)?upgrades?$/i', $lower)) {
+			return ['tool' => 'fm_check_upgrades', 'params' => []];
 		}
 		if (preg_match('/^(module|mod)\s+(status|info|details?)\s+(\S+)$/i', $msg, $m)) {
 			return ['tool' => 'fm_module_status', 'params' => ['name' => $m[3]]];
@@ -1599,7 +1616,10 @@ class ChatParser {
   `list feature codes`
 
 **System:**
-  `reload` / `list modules` / `module status core`
+  `reload` / `list modules` (summary; click a license bucket to drill in)
+  `list all modules` / `list modules <commercial|gpl|gpl2|gpl3|agpl|other>`
+  `check for upgrades` — query online repos (~10s)
+  `module status core`
   `asterisk info` / `uptime`
   `show sip settings` / `show firewall`
   `audit 10`
