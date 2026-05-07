@@ -1861,6 +1861,19 @@ class ChatParser {
 			if (preg_match('/^\d+$/', $p)) continue;
 			$out[$p] = true;
 		}
+		// Also harvest every chat command exposed via the sidebar so adding/removing
+		// a button in views/main.php updates the typeahead automatically. data-paste
+		// values often end in a space (paste-and-type prefixes); we keep them so
+		// typing the prefix surfaces the same starter the sidebar offers.
+		$sidebarPath = __DIR__ . '/../views/main.php';
+		$sidebar = @file_get_contents($sidebarPath);
+		if ($sidebar !== false && preg_match_all('/\bdata-(?:cmd|paste)="([^"]+)"/', $sidebar, $sm)) {
+			foreach ($sm[1] as $phrase) {
+				$p = trim($phrase);
+				if ($p === '' || preg_match('/^\d+$/', $p)) continue;
+				$out[$phrase] = true;
+			}
+		}
 		$out = array_keys($out);
 		sort($out, SORT_NATURAL | SORT_FLAG_CASE);
 		return $out;
@@ -1891,6 +1904,7 @@ class ChatParser {
 
 **Trunks:**
   `list trunks` / `trunk status 1`
+  `enable trunk` / `disable trunk` — pick from the trunk list
 
 **Ring Groups:**
   `list ringgroups` / `show ringgroup 600`
