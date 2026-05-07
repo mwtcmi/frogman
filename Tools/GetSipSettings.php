@@ -12,29 +12,27 @@ class GetSipSettings extends AbstractTool {
 			'sip_driver' => $this->freepbx->Config->get('ASTSIPDRIVER') ?: 'chan_pjsip',
 		];
 
-		// Get transport info from AMI
+		// Transport info from AMI (no BMO equivalent for live PJSIP transport state).
 		$astman = $this->freepbx->astman;
 		if ($astman && $astman->connected()) {
 			$res = $astman->Command('pjsip show transports');
-			$result['transports'] = trim($res['data'] ?? '');
+			$body = trim($res['data'] ?? '');
+			$body = preg_replace('/^Privilege:\s*Command\s*\R?/m', '', $body, 1);
+			$result['transports'] = trim($body);
 		}
 
-		// RTP range from rtp config files
-		$rtpConf = @file_get_contents('/etc/asterisk/rtp_additional.conf') ?: '';
-		if (preg_match('/rtpstart\s*=\s*(\d+)/', $rtpConf, $m)) $result['rtp_start'] = $m[1];
-		if (preg_match('/rtpend\s*=\s*(\d+)/', $rtpConf, $m)) $result['rtp_end'] = $m[1];
-
-		// External IP from sipsettings kvstore or pjsip config
-		$db = $this->freepbx->Database;
-		$sth = $db->prepare("SELECT keyword, data FROM kvstore_Sipsettings WHERE keyword IN ('externip','localnetworks') AND id = 'noid'");
-		try {
-			$sth->execute();
-			$rows = $sth->fetchAll(\PDO::FETCH_KEY_PAIR);
-			if (!empty($rows['externip'])) $result['external_ip'] = $rows['externip'];
-			if (!empty($rows['localnetworks'])) $result['local_networks'] = $rows['localnetworks'];
-		} catch (\Exception $e) {
-			// kvstore may not have these keys
-		}
+		// RTP range + external IP through the Sipsettings BMO so a FreePBX update
+		// can change the underlying storage (kvstore key, conf file path, table
+		// name) without breaking us.
+		$ss = $this->freepbx->Sipsettings;
+		$rtpStart = $ss->getConfig('rtpstart');
+		$rtpEnd = $ss->getConfig('rtpend');
+		$externIp = $ss->getConfig('externip');
+		$localNets = $ss->getConfig('localnetworks');
+		if ($rtpStart !== false && $rtpStart !== '') $result['rtp_start'] = $rtpStart;
+		if ($rtpEnd !== false && $rtpEnd !== '') $result['rtp_end'] = $rtpEnd;
+		if ($externIp !== false && $externIp !== '') $result['external_ip'] = $externIp;
+		if ($localNets !== false && $localNets !== '') $result['local_networks'] = $localNets;
 
 		return $result;
 	}
