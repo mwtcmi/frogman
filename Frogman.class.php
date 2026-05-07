@@ -448,8 +448,13 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 				}
 				$lines = ["**Trunks** ({$data['count']}):"];
 				foreach ($data['trunks'] as $t) {
-					$dis = $t['disabled'] === 'off' ? '' : ' [DISABLED]';
-					$lines[] = "  {{cmd:show trunk {$t['trunkid']}|{$t['trunkid']}}} — {$t['name']} ({$t['tech']}){$dis}";
+					$id = $t['trunkid'];
+					$isDisabled = ($t['disabled'] !== 'off');
+					$status = $isDisabled ? ' [DISABLED]' : '';
+					$action = $isDisabled
+						? "{{cmd:enable trunk {$id}|Enable}}"
+						: "{{cmd:disable trunk {$id}|Disable}}";
+					$lines[] = "  {{cmd:show trunk {$id}|{$id}}} — {$t['name']} ({$t['tech']}){$status} • {$action}";
 				}
 				return implode("\n", $lines);
 

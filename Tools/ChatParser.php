@@ -1594,6 +1594,9 @@ class ChatParser {
 			self::setPending($sessionId, 'fm_disable_trunk', $params);
 			return ['tool' => 'fm_disable_trunk', 'params' => $params];
 		}
+		if (preg_match('/^(enable|disable)\s+trunks?$/i', $msg)) {
+			return ['tool' => 'fm_list_trunks', 'params' => []];
+		}
 
 		// ── Validate ──
 		if (preg_match('/^validate|^security\s+scan/i', $lower)) {
