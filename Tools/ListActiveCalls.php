@@ -37,6 +37,9 @@ class ListActiveCalls extends AbstractTool {
 				if (empty($line) || strpos($line, 'Privilege:') === 0) {
 					continue;
 				}
+				if ($this->isAsteriskInternalChannel($line)) {
+					continue;
+				}
 				// Format: channel!context!extension!priority!state!application!data!callerid!accountcode!amaflags!duration!bridgedto!uniqueid
 				$parts = explode('!', $line);
 				if (count($parts) >= 7) {

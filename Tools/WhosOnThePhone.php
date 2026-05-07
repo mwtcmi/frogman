@@ -36,10 +36,9 @@ class WhosOnThePhone extends AbstractTool {
 			}
 		}
 
-		// Drop Asterisk internal channels that aren't actual phone calls
-		// (Message/* = SMS/SIP MESSAGE queue, AsyncGoto/* = dialplan jumps).
+		// Drop Asterisk internal channels that aren't actual phone calls.
 		$channels = array_values(array_filter($channels, function($ch) {
-			return !preg_match('#^(Message|AsyncGoto)/#i', $ch['channel']);
+			return !$this->isAsteriskInternalChannel($ch['channel']);
 		}));
 
 		// Match bridged pairs and resolve names

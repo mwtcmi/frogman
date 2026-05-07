@@ -24,8 +24,8 @@ class SystemDashboard extends AbstractTool {
 			$uptime = trim($up);
 		}
 
-		// Active calls — exclude Asterisk internal channels (Message/* SMS queue,
-		// AsyncGoto/* dialplan jumps) so the count reflects real phone conversations.
+		// Active calls — exclude Asterisk internal channels so the count reflects
+		// real phone conversations. Filter in AbstractTool::isAsteriskInternalChannel.
 		$activeCalls = 0;
 		if ($astman && $astman->connected()) {
 			$res = $astman->Command('core show channels concise');
@@ -34,7 +34,7 @@ class SystemDashboard extends AbstractTool {
 				foreach (explode("\n", $data) as $line) {
 					$line = trim($line);
 					if (empty($line) || strpos($line, 'Privilege:') === 0) continue;
-					if (preg_match('#^(Message|AsyncGoto)/#i', $line)) continue;
+					if ($this->isAsteriskInternalChannel($line)) continue;
 					$activeCalls++;
 				}
 			}

@@ -18,7 +18,22 @@ class OriginateCall extends AbstractTool {
 		if (!$confirm) return ['dry_run' => true, 'message' => "Would ring {$ext} first, then connect to {$dest}. Reply yes to confirm."];
 		$astman = $this->freepbx->astman;
 		if (!$astman || !$astman->connected()) throw new \Exception('Cannot connect to Asterisk Manager');
-		$res = $astman->Originate("PJSIP/{$ext}", $dest, 'from-internal', '1', null, null, 30000, $ext);
-		return ['dry_run' => false, 'message' => "Call originated: {$ext} → {$dest}", 'result' => $res];
+		// astman->Originate() accepts either 10 positional args OR a single array.
+		// Use the array form — fewer ways to be wrong.
+		$res = $astman->Originate([
+			'Channel'  => "PJSIP/{$ext}",
+			'Context'  => 'from-internal',
+			'Exten'    => $dest,
+			'Priority' => '1',
+			'Timeout'  => 30000,
+			'CallerID' => $ext,
+			'Async'    => 'true',
+		]);
+		$ok = is_array($res) && (($res['Response'] ?? '') === 'Success');
+		return [
+			'dry_run' => false,
+			'message' => $ok ? "Ringing {$ext} — will dial {$dest} when answered." : "Originate failed: " . ($res['Message'] ?? 'unknown error'),
+			'result' => $res,
+		];
 	}
 }

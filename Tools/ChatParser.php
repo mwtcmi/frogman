@@ -496,6 +496,14 @@ class ChatParser {
 		if (preg_match('/^peak\s+hours?$/i', $lower)) {
 			return ['tool' => 'fm_get_peak_hours', 'params' => []];
 		}
+		// DID destination map — Mermaid flowchart LR of every DID and where it terminates.
+		// Optional "filter X" (DID/description match) and "to Y" (destination match).
+		if (preg_match('/^(?:did\s+(?:destination\s+)?map|inbound\s+map|show\s+(?:did\s+)?(?:destination\s+)?map|where\s+do\s+(?:my\s+)?dids\s+go)(?:\s+filter\s+(\S+))?(?:\s+to\s+(.+))?$/i', $msg, $m)) {
+			$params = [];
+			if (!empty($m[1])) $params['filter'] = $m[1];
+			if (!empty($m[2])) $params['to'] = trim($m[2]);
+			return ['tool' => 'fm_did_destination_map', 'params' => $params];
+		}
 		if (preg_match('/^failed\s+calls?$/i', $lower)) {
 			return ['tool' => 'fm_get_failed_calls', 'params' => []];
 		}
@@ -1440,7 +1448,7 @@ class ChatParser {
 
 		// ── Live Call Control ──
 		if (preg_match('/^call\s+(\d+)\s+(?:to\s+)(\S+)$/i', $msg, $m)) {
-			$params = ['from' => $m[1], 'to' => $m[2]];
+			$params = ['ext' => $m[1], 'dest' => $m[2]];
 			self::setPending($sessionId, 'fm_originate_call', $params);
 			return ['tool' => 'fm_originate_call', 'params' => $params];
 		}

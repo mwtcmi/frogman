@@ -1469,7 +1469,8 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 				foreach ($data['dids'] as $d) {
 					$ext = $d['extension'] ?: '(unassigned)';
 					$desc = !empty($d['description']) ? " — {$d['description']}" : '';
-					$dest = !empty($d['destination']) ? " → {$d['destination']}" : '';
+					$destLabel = !empty($d['destination_label']) ? $d['destination_label'] : ($d['destination'] ?? '');
+					$dest = $destLabel !== '' ? " → {$destLabel}" : '';
 					$lines[] = "  {{cmd:show inbound route {$ext}|{$ext}}}{$desc}{$dest}";
 				}
 				return implode("\n", $lines);
@@ -1736,6 +1737,32 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 					$idDisplay = $cmd ? "{{cmd:{$cmd} {$r['id']}|{$r['id']}}}" : "`{$r['id']}`";
 					$lines[] = "  {$r['type']}: {$idDisplay} — {$r['name']}";
 				}
+				return implode("\n", $lines);
+
+			case 'fm_did_destination_map':
+				if (empty($data['did_count'])) {
+					$f = !empty($data['filter']) ? " (filter: \"{$data['filter']}\")" : '';
+					return "📞 No inbound routes found{$f}.";
+				}
+				$lines = ["📞 **Inbound DID Map** — {$data['did_count']} DID" . ($data['did_count']===1?'':'s') . " → {$data['destination_count']} unique destination" . ($data['destination_count']===1?'':'s')];
+				if (!empty($data['filter']) || !empty($data['to'])) {
+					$bits = [];
+					if (!empty($data['filter'])) $bits[] = "filter: \"{$data['filter']}\"";
+					if (!empty($data['to'])) $bits[] = "to: \"{$data['to']}\"";
+					$lines[] = "  " . implode(', ', $bits);
+				}
+				if (!empty($data['summary'])) {
+					$summaryBits = [];
+					$labels = ['extension'=>'extensions', 'ringgroup'=>'ring groups', 'queue'=>'queues', 'ivr'=>'IVRs', 'voicemail'=>'voicemail', 'timecondition'=>'time conditions', 'announcement'=>'announcements', 'terminate'=>'terminations', 'unknown'=>'unconfigured'];
+					foreach ($data['summary'] as $type => $count) {
+						$summaryBits[] = "{$count} → " . ($labels[$type] ?? $type);
+					}
+					$lines[] = "  " . implode(', ', $summaryBits);
+				}
+				$lines[] = "";
+				$lines[] = "```mermaid";
+				$lines[] = rtrim($data['mermaid']);
+				$lines[] = "```";
 				return implode("\n", $lines);
 
 			case 'fm_trace_call_flow':
