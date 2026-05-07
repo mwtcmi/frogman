@@ -11,15 +11,42 @@ class ListContacts extends AbstractTool {
 			$entries = $this->freepbx->Contactmanager->getEntriesByGroupID($params['group_id']);
 			$result = [];
 			if (!empty($entries)) {
+				$db = $this->freepbx->Database;
 				foreach ($entries as $entry) {
-					$numbers = $this->freepbx->Contactmanager->getNumbersByEntryID($entry['id']);
+					// Schema varies by group type. Internal (User Manager-backed) groups key
+					// the array by uid and pre-populate the numbers field. External contact
+					// groups use 'id' and require a getNumbersByEntryID() lookup.
+					$entryId = $entry['id'] ?? $entry['uid'] ?? null;
+					$name = trim(($entry['fname'] ?? '') . ' ' . ($entry['lname'] ?? ''));
+					if ($name === '') $name = trim($entry['displayname'] ?? '');
+					// Last resort for User Manager groups with blank user records — fall
+					// back to the FreePBX extension's name from core users table.
+					if ($name === '' && !empty($entry['default_extension'])) {
+						$sth = $db->prepare("SELECT name FROM users WHERE extension = ?");
+						$sth->execute([$entry['default_extension']]);
+						$name = $sth->fetchColumn() ?: '';
+					}
+					if ($name === '') $name = $entry['user'] ?? '';
+
 					$numList = [];
-					foreach ($numbers as $n) { $numList[] = $n['number'] ?? ''; }
+					if (!empty($entry['numbers']) && is_array($entry['numbers'])) {
+						// Internal group — numbers already on the entry. May be array of
+						// strings or array of {number, type, flags} dicts.
+						foreach ($entry['numbers'] as $n) {
+							if (is_string($n)) $numList[] = $n;
+							elseif (is_array($n)) $numList[] = $n['number'] ?? '';
+						}
+					} elseif ($entryId !== null) {
+						$numbers = $this->freepbx->Contactmanager->getNumbersByEntryID($entryId) ?: [];
+						foreach ($numbers as $n) { $numList[] = $n['number'] ?? ''; }
+					}
+
 					$result[] = [
-						'id' => $entry['id'],
-						'name' => trim(($entry['fname'] ?? '') . ' ' . ($entry['lname'] ?? '')),
+						'id' => $entryId,
+						'name' => $name,
 						'company' => $entry['company'] ?? '',
-						'numbers' => $numList,
+						'extension' => $entry['default_extension'] ?? null,
+						'numbers' => array_values(array_filter($numList)),
 					];
 				}
 			}

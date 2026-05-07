@@ -1412,9 +1412,16 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 				if (!empty($data['contacts'])) {
 					$lines = ["**Contacts in Group {$data['group_id']}** ({$data['count']}):"];
 					foreach ($data['contacts'] as $c) {
-						$nums = !empty($c['numbers']) ? ' — ' . implode(', ', $c['numbers']) : '';
+						$ext = !empty($c['extension']) ? $c['extension'] : null;
+						$displayName = !empty($c['name']) ? $c['name'] : ($ext ? "Ext {$ext}" : '(unnamed)');
+						$nums = [];
+						if ($ext && !in_array((string)$ext, $c['numbers'] ?? [], true)) {
+							$nums[] = (string)$ext;
+						}
+						foreach ($c['numbers'] ?? [] as $n) $nums[] = $n;
+						$numStr = !empty($nums) ? ' — ' . implode(', ', $nums) : '';
 						$company = !empty($c['company']) ? " ({$c['company']})" : '';
-						$lines[] = "  👤 **{$c['name']}**{$company}{$nums}";
+						$lines[] = "  👤 **{$displayName}**{$company}{$numStr}";
 					}
 					return implode("\n", $lines);
 				}
