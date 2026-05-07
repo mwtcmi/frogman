@@ -14,12 +14,19 @@ class ShowDialplanContext extends AbstractTool {
 		return true;
 	}
 	public function execute($params, $context) {
+		$name = $params['name'];
 		$astman = $this->freepbx->astman;
-		if ($astman && $astman->connected()) {
-			$res = $astman->Command('dialplan show ' . escapeshellarg($params['name']));
-			return ['context' => $params['name'], 'dialplan' => trim($res['data'] ?? '')];
+		if (!$astman || !$astman->connected()) {
+			throw new \Exception('Asterisk Manager (AMI) is not connected — cannot read live dialplan.');
 		}
-		$output = []; exec('/usr/sbin/fwconsole context ' . escapeshellarg($params['name']) . ' 2>&1', $output, $ec);
-		return ['context' => $params['name'], 'dialplan' => implode("\n", $output)];
+		$res = $astman->Command('dialplan show ' . $name);
+		$body = trim($res['data'] ?? '');
+		// AMI prefixes Command responses with a "Privilege: Command" header line
+		$body = preg_replace('/^Privilege:\s*Command\s*\R?/m', '', $body, 1);
+		$body = trim($body);
+		if ($body === '' || stripos($body, 'failed') !== false) {
+			throw new \Exception("Asterisk did not return a dialplan for context `{$name}` — check the name with `show dialplan`.");
+		}
+		return ['context' => $name, 'dialplan' => $body];
 	}
 }
