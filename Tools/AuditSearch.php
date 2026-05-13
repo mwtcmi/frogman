@@ -30,6 +30,13 @@ class AuditSearch extends AbstractTool {
 		return null;
 	}
 
+	// Audit details routinely carry operational context that read-tier callers
+	// shouldn't see: session IDs, full param dumps, tool responses (already
+	// redacted for known sensitive keys per GHSA-3p65-2prr-cfvf, but the broader
+	// surface — extension secrets in transit, IP addresses, etc. — is still
+	// admin-only material). Bumped to PERM_ADMIN.
+	public function permissionLevel() { return self::PERM_ADMIN; }
+
 	public function execute($params, $context) {
 		$conditions = [];
 		$binds = [];
