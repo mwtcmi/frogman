@@ -46,14 +46,17 @@ class RinggroupAddMember extends AbstractTool {
 
 		$currentMembers = !empty($group['grplist']) ? array_map('trim', explode('-', $group['grplist'])) : [];
 
-		// Check if already a member
+		// Check if already a member. Preserve the dry_run contract on no-op early exit:
+		// dry_run reflects whether confirm was passed, NOT whether a write happened —
+		// otherwise a preview call gets dry_run:false even though nothing ran.
 		$cleanMember = preg_replace('/[^0-9*+#]/', '', $member);
 		foreach ($currentMembers as $m) {
 			$cleanExisting = preg_replace('/[^0-9*+#]/', '', $m);
 			if ($cleanExisting === $cleanMember) {
 				return [
-					'dry_run' => false,
+					'dry_run' => !$confirm,
 					'message' => "{$member} is already a member of ring group {$grpnum}",
+					'noop' => true,
 				];
 			}
 		}

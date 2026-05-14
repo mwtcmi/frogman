@@ -71,11 +71,16 @@ class RepairUsermanLinks extends AbstractTool {
 		}
 
 		if (empty($report)) {
+			// Preserve the dry_run contract: dry_run reflects whether the caller passed
+			// confirm:true, NOT whether a write happened. A nothing-to-repair early exit
+			// shouldn't report dry_run:false on a preview call — callers using dry_run to
+			// distinguish "would have done" vs "did" would get the wrong signal.
 			return [
-				'dry_run' => false,
+				'dry_run' => !$confirm,
 				'message' => 'All User Manager users with extensions are already correctly wired. Nothing to repair.',
 				'repaired' => 0,
 				'total' => 0,
+				'noop' => true,
 			];
 		}
 
