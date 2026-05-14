@@ -1,13 +1,15 @@
 <module>
 	<rawname>frogman</rawname>
 	<name>Frogman</name>
-	<version>1.6.4</version>
+	<version>1.6.5</version>
 	<publisher>Frogman Project</publisher>
 	<license>AGPLv3</license>
 	<licenselink>https://www.gnu.org/licenses/agpl-3.0.txt</licenselink>
 	<category>Admin</category>
-	<description>Complete PBX control through natural language from a web console, chat platforms, MCP, or any API client. 219 tools built entirely on FreePBX's native interfaces (BMO, GraphQL, AMI, fwconsole).</description>
+	<description>Complete PBX control through natural language from a web console, chat platforms, MCP, or any API client. 220 tools built entirely on FreePBX's native interfaces (BMO, GraphQL, AMI, fwconsole).</description>
 	<changelog><![CDATA[
+		*1.6.5* New tool: fm_delete_userman_user. Wraps Userman->deleteUserByID() for cleaning up orphaned User Manager rows — useful after macro tests, manual extension deletes, or any scenario where the Userman side gets stranded. Accepts either numeric uid or username, requires confirm:true, dry-run preview surfaces whether the user has a linked extension (which is NOT deleted by this tool — by design). Chat: "delete userman user <username>" / "delete userman user <uid>". 220 tools, +1.
+
 		*1.6.4* Bug-fix sweep — eight issues closed across two batches plus the closeout of the long-standing #10 "global page toggle" as architecturally not feasible. No security advisories (all already-known issues). Tool count unchanged (219). New CI: tag-triggered GitHub Actions release workflow that builds the tarball from `git archive` and creates the release automatically; manual `gh release create` flow still works as a fallback.
 
 		- #28: fm_toggle_time_condition's missing-row check used `empty($tc)`, but `getTimeCondition()` returns a default-shaped non-empty array when no row matches. "Undefined array key 'displayname'" reached the caller instead of the documented "Time condition {id} not found" message. Now checks the populated identity field.

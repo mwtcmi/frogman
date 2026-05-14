@@ -2,7 +2,7 @@
 
 ## What is this project?
 
-Frogman is a FreePBX module (`/var/www/html/admin/modules/frogman/`) that provides chat-driven headless control of FreePBX. It exposes 219 tools through a registry pattern accessible via CLI, HTTP API, GraphQL, and MCP.
+Frogman is a FreePBX module (`/var/www/html/admin/modules/frogman/`) that provides chat-driven headless control of FreePBX. It exposes 220 tools through a registry pattern accessible via CLI, HTTP API, GraphQL, and MCP.
 
 ## Hard rules — do not violate
 

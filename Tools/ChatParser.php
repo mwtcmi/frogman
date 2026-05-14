@@ -803,6 +803,14 @@ class ChatParser {
 			self::setPending($sessionId, 'fm_reset_password', $params);
 			return ['tool' => 'fm_reset_password', 'params' => $params];
 		}
+		// Delete a User Manager user. Accept either a numeric uid or a username —
+		// the tool routes either to the right BMO lookup.
+		if (preg_match('/^(?:delete|remove)\s+(?:user\s*manager|userman)\s+user\s+(\S+)$/i', $msg, $m)) {
+			$target = $m[1];
+			$params = preg_match('/^\d+$/', $target) ? ['id' => $target] : ['username' => $target];
+			self::setPending($sessionId, 'fm_delete_userman_user', $params);
+			return ['tool' => 'fm_delete_userman_user', 'params' => $params];
+		}
 
 		// ── Allowlist ──
 		if (preg_match('/^(list|show)\s+(all\s+)?(allowlist|allow\s*list|whitelist|allowed|allowed\s+numbers?)$/i', $lower)) {
@@ -1968,6 +1976,7 @@ class ChatParser {
   `repair userman` / `fix ucp logins` — restore default-group + assigned wiring for UCP login
   `repair userman <ext>` — repair just one extension
   `reset password for <user>` — reset a User Manager password
+  `delete userman user <username>` / `delete userman user <uid>` — delete a Userman row (extension is NOT removed)
   `revoke token <id>` — revoke an API token
 
 **Misc Destinations:**
