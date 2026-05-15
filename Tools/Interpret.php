@@ -286,7 +286,8 @@ class Interpret {
 		// from scoreCommandShape() to clear shouldRun()'s threshold.
 		return [
 			['pattern' => '/\b(have\s+a\s+look\s+at|take\s+a\s+look\s+at|look\s+at)\b/i', 'replacement' => 'show', 'confidence' => 0.72, 'risk' => self::RISK_UNKNOWN, 'reason' => 'phrasal verb'],
-			['pattern' => '/\b(get\s+me|pull\s+up|bring\s+up|find\s+me)\b/i', 'replacement' => 'show', 'confidence' => 0.72, 'risk' => self::RISK_UNKNOWN, 'reason' => 'phrasal verb'],
+			['pattern' => '/\b(see|view|display)\b/i', 'replacement' => 'show', 'confidence' => 0.72, 'risk' => self::RISK_UNKNOWN, 'reason' => 'phrasal verb'],
+            ['pattern' => '/\b(get\s+me|pull\s+up|bring\s+up|find\s+me)\b/i', 'replacement' => 'show', 'confidence' => 0.72, 'risk' => self::RISK_UNKNOWN, 'reason' => 'phrasal verb'],
 			['pattern' => '/\b(sort\s+out|deal\s+with|take\s+care\s+of)\b/i', 'replacement' => 'fix', 'confidence' => 0.72, 'risk' => self::RISK_UNKNOWN, 'reason' => 'phrasal verb'],
 			['pattern' => '/\b(spin\s+up|stand\s+up|provision)\b/i', 'replacement' => 'create', 'confidence' => 0.72, 'risk' => self::RISK_UNKNOWN, 'reason' => 'phrasal verb'],
 			['pattern' => '/\b(decommission|retire)\b/i', 'replacement' => 'delete', 'confidence' => 0.72, 'risk' => self::RISK_UNKNOWN, 'reason' => 'phrasal verb'],
