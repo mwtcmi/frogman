@@ -26,6 +26,10 @@ class Interpret {
 
 	const MODE_OFF = 'off';
 	const MODE_LOCAL = 'local';
+	const RISK_READ = 'read';
+	const RISK_WRITE = 'write';
+	const RISK_STATE = 'state';
+	const RISK_UNKNOWN = 'unknown';
 	// Reserved for future use: MODE_REMOTE
 
 	/**
@@ -36,14 +40,46 @@ class Interpret {
 	 *   - null:   couldn't help. ChatParser falls through to fuzzy matching.
 	 */
 	public static function expand($msg) {
+		$result = self::interpret($msg);
+		if ($result && self::shouldRun($result)) {
+			return $result['text'];
+		}
+		return null;
+	}
+
+	/**
+	 * Structured interpretation result for ChatParser.
+	 *
+	 * Returns null when Interpret has no useful change. Otherwise:
+	 *   text       => normalised command text
+	 *   confidence => deterministic confidence score, 0.0-1.0
+	 *   risk       => read/write/state/unknown
+	 *   reason     => short explanation for audit/debug/review
+	 */
+	public static function interpret($msg) {
 		$mode = self::getMode();
 		if ($mode === self::MODE_OFF) {
 			return null;
 		}
 		if ($mode === self::MODE_LOCAL) {
-			return self::expandLocal($msg);
+			return self::interpretLocal($msg);
 		}
 		return null;
+	}
+
+	public static function shouldRun($result) {
+		if (!is_array($result) || empty($result['text'])) {
+			return false;
+		}
+		$confidence = (float)($result['confidence'] ?? 0);
+		$risk = $result['risk'] ?? self::RISK_UNKNOWN;
+		$thresholds = [
+			self::RISK_READ => 0.78,
+			self::RISK_WRITE => 0.88,
+			self::RISK_STATE => 0.90,
+			self::RISK_UNKNOWN => 0.95,
+		];
+		return $confidence >= ($thresholds[$risk] ?? $thresholds[self::RISK_UNKNOWN]);
 	}
 
 	/**
@@ -77,6 +113,20 @@ class Interpret {
 	}
 
 	/**
+	 * Response used when a rewrite changed the input but still did not land on
+	 * a strict parser command. This is a low-confidence interpretation, so ask
+	 * the user to rephrase instead of guessing.
+	 */
+	public static function rephrasePrompt($original, $expanded = null) {
+		$original = trim((string)$original);
+		$expanded = trim((string)$expanded);
+		if ($expanded !== '' && strcasecmp($expanded, $original) !== 0) {
+			return "I tried reading that as `{$expanded}`, but I'm not sure what command you want. Please rephrase.";
+		}
+		return "I'm not sure what command you want. Please rephrase.";
+	}
+
+	/**
 	 * Read the interpret mode from Frogman's FreePBX module config store.
 	 * Defaults to 'local'.
 	 * Admins can disable by setting it to 'off'.
@@ -100,9 +150,12 @@ class Interpret {
 	 * Each transformation is deliberately anchored so it only fires when
 	 * we're confident it's an instruction, not a casual mention.
 	 */
-	private static function expandLocal($msg) {
+	private static function interpretLocal($msg) {
 		$original = $msg;
 		$work = $msg;
+		$confidence = 0.70;
+		$risk = self::RISK_READ;
+		$reasons = [];
 
 		// 1. Strip politeness and filler from the START of the message only.
 		//    Anchored so "show me just the failed calls" doesn't lose "just".
@@ -112,21 +165,42 @@ class Interpret {
 			'/^\s*(i\s+need\s+to|i\s+want\s+to|i\s+would\s+like\s+to|i\'?d\s+like\s+to)\s+/i',
 			'/^\s*just\s+/i',
 		];
+		$before = $work;
 		$work = preg_replace($leading, '', $work);
+		if ($work !== $before) {
+			$confidence = max($confidence, 0.82);
+			$reasons[] = 'leading request wrapper';
+		}
 
 		// 2. Strip mid-sentence politeness or tone markers that are always safe to drop.
 		$inline = [
 			'/\b(please|pls|plz)\b/i',
 			'/\b(for\s+me|if\s+you\s+can)\b/i',
 		];
+		$before = $work;
 		$work = preg_replace($inline, '', $work);
+		if ($work !== $before) {
+			$confidence = max($confidence, 0.80);
+			$reasons[] = 'inline politeness';
+		}
 
 		// 2a. Strip rude/urgent/emotional phrasing so we can recover the real command.
+		$before = $work;
 		$work = self::expandTonePhrases($work);
+		if ($work !== $before) {
+			$confidence = max($confidence, $work === 'help' ? 0.93 : 0.78);
+			$risk = $work === 'help' ? self::RISK_READ : $risk;
+			$reasons[] = 'tone wrapper';
+		}
 
 		// 2b. Strip trailing urgency/tone markers that otherwise get captured as
 		// names or labels by strict parser patterns.
+		$before = $work;
 		$work = self::stripTrailingTone($work);
+		if ($work !== $before) {
+			$confidence = max($confidence, 0.84);
+			$reasons[] = 'trailing urgency';
+		}
 
 		// 2c. Normalise common spellings before intent rewrites.
 		$spellings = [
@@ -135,7 +209,12 @@ class Interpret {
 			'/\bfollow\s+me\b/i' => 'followme',
 		];
 		foreach ($spellings as $pattern => $replacement) {
+			$before = $work;
 			$work = preg_replace($pattern, $replacement, $work);
+			if ($work !== $before) {
+				$confidence = max($confidence, 0.86);
+				$reasons[] = 'spelling normalisation';
+			}
 		}
 
 		// 3. Phrasal verbs → single-word equivalents the strict patterns know.
@@ -151,7 +230,13 @@ class Interpret {
 			'/\b(reboot|bounce|cycle)\b/i'                                  => 'restart',
 		];
 		foreach ($phrasals as $pattern => $replacement) {
+			$before = $work;
 			$work = preg_replace($pattern, $replacement, $work);
+			if ($work !== $before) {
+				$confidence = max($confidence, 0.72);
+				$risk = self::RISK_UNKNOWN;
+				$reasons[] = 'phrasal verb';
+			}
 		}
 
 		// 3a. Viewer phrasing that maps cleanly to existing strict anchors.
@@ -163,13 +248,25 @@ class Interpret {
 			'/^\s*(current|live)\s+call\s+activity\s*$/i' => 'current calls',
 		];
 		foreach ($viewPhrases as $pattern => $replacement) {
+			$before = $work;
 			$work = preg_replace($pattern, $replacement, $work);
+			if ($work !== $before) {
+				$confidence = max($confidence, 0.91);
+				$risk = self::RISK_READ;
+				$reasons[] = 'viewer phrase';
+			}
 		}
 
 		// 4. State-of-the-user phrases -> PBX actions.
 		//    Anchored to "<extension> is <state>" so bare "sick" or "left"
 		//    in unrelated phrases doesn't fire.
+		$before = $work;
 		$work = self::expandStatePhrases($work);
+		if ($work !== $before) {
+			$confidence = max($confidence, 0.94);
+			$risk = self::RISK_STATE;
+			$reasons[] = 'extension state phrase';
+		}
 
 		// 4a. Remove conversational punctuation without damaging values like
 		// emails, IPs, phone numbers, or channel names.
@@ -183,7 +280,35 @@ class Interpret {
 
 		// Only return if we changed something meaningful.
 		if ($work !== '' && $work !== $original) {
-			return $work;
+			$shape = self::scoreCommandShape($work);
+			if ($shape) {
+				$confidence = max($confidence, $shape['confidence']);
+				$risk = $shape['risk'];
+				$reasons[] = $shape['reason'];
+			}
+			return [
+				'text' => $work,
+				'confidence' => min(1.0, $confidence),
+				'risk' => $risk,
+				'reason' => implode(', ', array_unique($reasons)),
+			];
+		}
+		return null;
+	}
+
+	private static function scoreCommandShape($msg) {
+		$work = trim($msg);
+		$shapes = [
+			['pattern' => '/^(?:show|get|check|list|who\s+is|current\s+calls|help)\b/i', 'confidence' => 0.90, 'risk' => self::RISK_READ, 'reason' => 'read command shape'],
+			['pattern' => '/^(?:health|diagnose|troubleshoot)\b/i', 'confidence' => 0.88, 'risk' => self::RISK_READ, 'reason' => 'diagnostic command shape'],
+			['pattern' => '/^(?:enable|disable|set|clear|forward|configure)\b/i', 'confidence' => 0.90, 'risk' => self::RISK_STATE, 'reason' => 'state command shape'],
+			['pattern' => '/^(?:create|add|new|rename|update)\b/i', 'confidence' => 0.89, 'risk' => self::RISK_WRITE, 'reason' => 'write command shape'],
+			['pattern' => '/^(?:delete|remove|drop|decommission|retire)\b/i', 'confidence' => 0.50, 'risk' => self::RISK_UNKNOWN, 'reason' => 'destructive command shape'],
+		];
+		foreach ($shapes as $shape) {
+			if (preg_match($shape['pattern'], $work)) {
+				return $shape;
+			}
 		}
 		return null;
 	}

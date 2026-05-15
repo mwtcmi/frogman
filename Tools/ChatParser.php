@@ -1674,11 +1674,18 @@ class ChatParser {
 		// re-parse the normalised form. Off-switchable via kvstore key
 		// 'frogman_interpret_mode'.
 		if (!$skipFuzzy) {
-			$expanded = Interpret::expand($msg);
-			if (is_string($expanded) && $expanded !== $msg) {
+			$interpreted = Interpret::interpret($msg);
+			if (is_array($interpreted) && !empty($interpreted['text']) && $interpreted['text'] !== $msg) {
+				$expanded = $interpreted['text'];
+				if (!Interpret::shouldRun($interpreted)) {
+					return ['response' => Interpret::rephrasePrompt($msg, $expanded)];
+				}
 				$result = self::parse($expanded, $sessionId, true);
 				if (is_array($result) && isset($result['tool']) && !isset($result['interpreted_as'])) {
 					$result['interpreted_as'] = $expanded;
+				}
+				if (is_array($result) && isset($result['response']) && strpos($result['response'], "don't understand") !== false) {
+					return ['response' => Interpret::rephrasePrompt($msg, $expanded)];
 				}
 				return $result;
 			}
