@@ -1,6 +1,10 @@
 <?php
 namespace FreePBX\modules\Frogman;
 
+if (!class_exists(__NAMESPACE__ . '\\Interpret', false)) {
+	require_once realpath(__DIR__ . '/Interpret.php');
+}
+
 class ChatParser {
 
 	private static $db = null;
@@ -1657,6 +1661,21 @@ class ChatParser {
 		// ── Shorthand: just a number = get extension ──
 		if (preg_match('/^(\d{3,6})$/', $msg, $m)) {
 			return ['tool' => 'fm_get_extension', 'params' => ['ext' => $m[1]]];
+		}
+		
+		// ── Interpretation Layer ──
+		// Strip filler, normalise phrasing. If it changes the input,
+		// re-parse the normalised form. Off-switchable via kvstore key
+		// 'frogman_interpret_mode'.
+		if (!$skipFuzzy) {
+			$expanded = Interpret::expand($msg);
+			if (is_string($expanded) && $expanded !== $msg) {
+				$result = self::parse($expanded, $sessionId, true);
+				if (is_array($result) && isset($result['tool']) && !isset($result['interpreted_as'])) {
+					$result['interpreted_as'] = $expanded;
+				}
+				return $result;
+			}
 		}
 
 		// ── Fuzzy Intent Matching ──
