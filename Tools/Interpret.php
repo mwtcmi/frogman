@@ -76,7 +76,7 @@ class Interpret {
 		$thresholds = [
 			self::RISK_READ => 0.78,
 			self::RISK_WRITE => 0.88,
-			self::RISK_STATE => 0.90,
+			self::RISK_STATE => 0.91,
 			self::RISK_UNKNOWN => 0.95,
 		];
 		return $confidence >= ($thresholds[$risk] ?? $thresholds[self::RISK_UNKNOWN]);
@@ -275,12 +275,15 @@ class Interpret {
 	private static function spellingRules() {
 		return [
 			['pattern' => '/\be-mail\b/i', 'replacement' => 'email', 'confidence' => 0.86, 'reason' => 'spelling normalisation'],
-			['pattern' => '/\bcall\s*forward\b/i', 'replacement' => 'call forward', 'confidence' => 0.86, 'reason' => 'spelling normalisation'],
+			['pattern' => '/\bcall\s*forward\b/i', 'replacement' => 'call forward', 'confidence' => 0.86, 'reason' => 'whitespace-tolerant call forward normalisation'],
 			['pattern' => '/\bfollow\s+me\b/i', 'replacement' => 'followme', 'confidence' => 0.86, 'reason' => 'spelling normalisation'],
 		];
 	}
 
 	private static function phrasalVerbRules() {
+		// RISK_UNKNOWN is intentional. Phrasal rewrites alone aren't sufficient
+		// evidence to act on; they need a corroborating command-shape score
+		// from scoreCommandShape() to clear shouldRun()'s threshold.
 		return [
 			['pattern' => '/\b(have\s+a\s+look\s+at|take\s+a\s+look\s+at|look\s+at)\b/i', 'replacement' => 'show', 'confidence' => 0.72, 'risk' => self::RISK_UNKNOWN, 'reason' => 'phrasal verb'],
 			['pattern' => '/\b(get\s+me|pull\s+up|bring\s+up|find\s+me)\b/i', 'replacement' => 'show', 'confidence' => 0.72, 'risk' => self::RISK_UNKNOWN, 'reason' => 'phrasal verb'],
@@ -375,7 +378,7 @@ class Interpret {
 		$patterns = [
 			'/^\s*(?:you(?:\'re|re| are)?\s+)?' . $insults . '[.!?,-]*\s*/i',
 			'/^\s*(?:you(?:\'re|re| are)\s+)?(?:bloody|fucking|damn|goddamn)\s+' . $insults . '[.!?,-]*\s*/i',
-			'/[\s,]+(?:you(?:\'re|re| are)?\s+)?' . $insults . '\s*$/',
+			'/[\s,]+(?:you(?:\'re|re| are)?\s+)?' . $insults . '\s*$/i',
 		];
 		foreach ($patterns as $pattern) {
 			$work = preg_replace($pattern, ' ', $work);
