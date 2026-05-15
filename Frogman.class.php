@@ -242,7 +242,15 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 		$toolName = $parsed['tool'];
 		$params = $parsed['params'];
 
-		$result = $this->runTool($toolName, $params, null, $sessionId);
+		// v1.6.7 — preserve the chat-origin natural language in the audit row.
+		// $message is what the user typed; $parsed['interpreted_as'] is populated
+		// by any upstream natural-language normalisation layer that sits between
+		// the user and ChatParser (e.g. an Interpret/expand pass) — NULL if no
+		// rewrite occurred or the layer isn't installed. Non-chat invocation
+		// paths (HTTP API, GraphQL, CLI, MCP) don't pass these args, leaving
+		// chat_input + interpreted_as NULL in oc_audit_log for those calls.
+		$interpretedAs = isset($parsed['interpreted_as']) ? $parsed['interpreted_as'] : null;
+		$result = $this->runTool($toolName, $params, null, $sessionId, $message, $interpretedAs);
 
 		// Format the result as human-readable text
 		$reply = $this->formatToolResult($toolName, $result, $sessionId);
@@ -2234,11 +2242,37 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 		return $data;
 	}
 
-	public function auditIntent($tool, $params, $userId = null, $sessionId = null) {
-		$sql = "INSERT INTO oc_audit_log (tool, params, user_id, session_id, intent, status, created_at)
-		        VALUES (?, ?, ?, ?, ?, 'pending', ?)";
+	// Free-text counterpart to redactSensitive(). chat_input is a raw string
+	// the user typed, so the array-key approach above doesn't apply — a user
+	// can type "set vmpwd 1234 for 1001" and the secret is positional, not
+	// under a key. This redactor matches a known secret-keyword followed by
+	// the next whitespace-delimited token and replaces that token with
+	// [REDACTED]. Conservative by design: only the listed keywords trigger
+	// it; we don't try to defang arbitrary high-entropy strings. fm_audit_search
+	// is PERM_ADMIN regardless, which bounds exposure even if a keyword slips.
+	private function redactChatInput($text) {
+		if (!is_string($text) || $text === '') return $text;
+		$pattern = '/\b(password|passwd|pwd|vmpwd|umpassword|umpwd|secret|token|api_key|apikey)\s+\S+/i';
+		return preg_replace($pattern, '$1 [REDACTED]', $text);
+	}
+
+	public function auditIntent($tool, $params, $userId = null, $sessionId = null,
+	                            $chatInput = null, $interpretedAs = null) {
+		$sql = "INSERT INTO oc_audit_log
+		          (tool, params, user_id, session_id, intent,
+		           chat_input, interpreted_as, status, created_at)
+		        VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)";
 		$sth = $this->db->prepare($sql);
-		$sth->execute([$tool, json_encode($this->redactSensitive($params)), $userId, $sessionId, "Execute {$tool}", time()]);
+		$sth->execute([
+			$tool,
+			json_encode($this->redactSensitive($params)),
+			$userId,
+			$sessionId,
+			"Execute {$tool}",
+			$chatInput     !== null ? $this->redactChatInput($chatInput)     : null,
+			$interpretedAs !== null ? $this->redactChatInput($interpretedAs) : null,
+			time(),
+		]);
 		return (int) $this->db->lastInsertId();
 	}
 
@@ -2335,7 +2369,8 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 		return isset($this->tools[$name]) ? $this->tools[$name] : null;
 	}
 
-	public function runTool($name, $params, $userId = null, $sessionId = null) {
+	public function runTool($name, $params, $userId = null, $sessionId = null,
+	                        $chatInput = null, $interpretedAs = null) {
 		$this->loadTools();
 
 		if (!isset($this->tools[$name])) {
@@ -2382,7 +2417,7 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 			return ['status' => 'error', 'message' => "Validation failed: {$validation}"];
 		}
 
-		$auditId = $this->auditIntent($name, $params, $userId, $sessionId);
+		$auditId = $this->auditIntent($name, $params, $userId, $sessionId, $chatInput, $interpretedAs);
 
 		try {
 			$result = $tool->execute($params, [

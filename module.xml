@@ -1,13 +1,15 @@
 <module>
 	<rawname>frogman</rawname>
 	<name>Frogman</name>
-	<version>1.6.6</version>
+	<version>1.6.7</version>
 	<publisher>Frogman Project</publisher>
 	<license>AGPLv3</license>
 	<licenselink>https://www.gnu.org/licenses/agpl-3.0.txt</licenselink>
 	<category>Admin</category>
 	<description>Complete PBX control through natural language from a web console, chat platforms, MCP, or any API client. 220 tools built entirely on FreePBX's native interfaces (BMO, GraphQL, AMI, fwconsole).</description>
 	<changelog><![CDATA[
+		*1.6.7* Audit-log now preserves chat-origin natural language. Two new columns on oc_audit_log: chat_input (raw user message for chat-initiated tool calls) and interpreted_as (canonical form after natural-language normalisation, populated when an upstream interpret/rewrite step fires; NULL otherwise). auditIntent() accepts both as optional trailing args; non-chat invocation paths (HTTP API, GraphQL, CLI, MCP) leave both NULL, so existing call sites are backwards-compatible. fm_audit_search surfaces both fields. Inline secrets in chat_input (password, vmpwd, token, etc.) are pattern-redacted before persistence via a new sibling helper redactChatInput() — key-name redaction (redactSensitive) operates on arrays and doesn't fit free text. Migration is idempotent (SHOW COLUMNS guard in install.php); safe to re-run. No breaking changes, no security advisory — this fills a forensic gap surfaced while reviewing an upstream community contribution that adds a natural-language expansion layer on top of ChatParser.
+
 		*1.6.6* **Security release.** Patches one advisory surfaced during a fresh internal audit on 2026-05-13. 220 tools, unchanged.
 
 		- GHSA (filed at ship time): stored XSS in the chat console's markdown formatter. The four template patterns in assets/js/chat.js's formatMarkdown — inline code, bold, markdown links, and download links — inserted regex capture groups as raw HTML, so any tool response that reflected a user-controlled field (extension name, ring-group description, etc.) could carry an HTML payload that the browser would execute when another admin viewed it through Frogman chat. FreePBX's own admin GUI escapes these fields properly (freepbx_htmlspecialchars throughout the views); the formatter was the leaky side. Real exposure depends on deployment topology — single-admin deployments are unaffected; multi-admin deployments with tier separation in oc_permissions face a write-tier-to-admin-tier escalation vector (lower-tier admin injects via a field they have write access to → higher-tier admin views via Frogman chat → payload runs in higher-tier session). No known affected deployments at disclosure time given the experimental project status. Fix: every regex capture going into HTML now passes through escapeHtml() before insertion, plus a scheme-allowlist on download URLs (block javascript:/data:/vbscript:). The chat console's CSP-less DOM-construction path means escaping at the formatter is the right defensive layer.
@@ -77,6 +79,8 @@
 			<field name="user_id" type="integer" notnull="false"/>
 			<field name="session_id" type="string" length="64" notnull="false"/>
 			<field name="intent" type="text" notnull="false"/>
+			<field name="chat_input" type="text" notnull="false"/>
+			<field name="interpreted_as" type="text" notnull="false"/>
 			<field name="status" type="string" length="20" default="pending"/>
 			<field name="detail" type="text" notnull="false"/>
 			<field name="created_at" type="integer" unsigned="true" default="0"/>

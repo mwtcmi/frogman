@@ -10,7 +10,7 @@ class AuditSearch extends AbstractTool {
 	}
 
 	public function description() {
-		return 'Search the Frogman audit log. Filters: tool, status (pending/success/error), user_id, session_id, limit (default 25, max 100).';
+		return 'Search the Frogman audit log. Filters: tool, status (pending/success/error), user_id, session_id, limit (default 25, max 100). Returns chat_input (raw user message) and interpreted_as (normalised form) when the call came in via chat; both NULL for HTTP/GraphQL/CLI/MCP invocations.';
 	}
 
 	public function validate($params) {
@@ -62,7 +62,7 @@ class AuditSearch extends AbstractTool {
 		$limit = isset($params['limit']) ? min((int) $params['limit'], 100) : 25;
 
 		$sql = "SELECT id, tool, params, user_id, session_id, status, intent,
-		               created_at, completed_at
+		               chat_input, interpreted_as, created_at, completed_at
 		        FROM oc_audit_log
 		        {$where}
 		        ORDER BY created_at DESC

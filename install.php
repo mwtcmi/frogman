@@ -94,3 +94,29 @@ try {
 	}
 	throw $e;
 }
+
+// v1.6.7 — capture chat-origin natural language in oc_audit_log so an audit
+// row reconstructs the full chain: what the user said → what an upstream
+// natural-language layer made of it → which tool ran. Both columns NULL for
+// non-chat invocations (HTTP API, GraphQL, CLI, MCP); only the chat entry
+// point populates them. Idempotent — column-exists guard means re-running
+// install.php is safe. See module.xml for the corresponding Doctrine
+// declaration; this ALTER is the fast path so Doctrine reconciler drift
+// across FreePBX versions doesn't leave the columns missing in practice.
+try {
+	$cols = $frogmanDb->query("SHOW COLUMNS FROM oc_audit_log")->fetchAll(\PDO::FETCH_COLUMN);
+	if (!in_array('chat_input', $cols, true)) {
+		$frogmanDb->query("ALTER TABLE oc_audit_log ADD COLUMN chat_input TEXT NULL AFTER intent");
+	}
+	if (!in_array('interpreted_as', $cols, true)) {
+		$frogmanDb->query("ALTER TABLE oc_audit_log ADD COLUMN interpreted_as TEXT NULL AFTER chat_input");
+	}
+	if (function_exists('out')) {
+		out(_("Frogman: ensured oc_audit_log has chat_input + interpreted_as columns (v1.6.7)."));
+	}
+} catch (\Throwable $e) {
+	if (function_exists('out')) {
+		out(_("Frogman: chat_input migration failed — ") . $e->getMessage());
+	}
+	throw $e;
+}
