@@ -21,6 +21,7 @@ namespace FreePBX\modules\Frogman;
  * Parser helper only: this is not an AbstractTool and must not be
  * auto-registered as a callable Frogman tool.
  */
+if (!class_exists(__NAMESPACE__ . '\\Interpret', false)) {
 class Interpret {
 
 	const MODE_OFF = 'off';
@@ -241,4 +242,5 @@ class Interpret {
 		$work = preg_replace('/[.,]+(?=\s|$)/', ' ', $work);
 		return $work;
 	}
+}
 }
