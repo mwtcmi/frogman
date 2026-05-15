@@ -94,7 +94,11 @@ class Interpret {
 		// 2a. Strip rude/urgent/emotional phrasing so we can recover the real command.
 		$work = self::expandTonePhrases($work);
 
-		// 2b. Normalise common spellings before intent rewrites.
+		// 2b. Strip trailing urgency/tone markers that otherwise get captured as
+		// names or labels by strict parser patterns.
+		$work = self::stripTrailingTone($work);
+
+		// 2c. Normalise common spellings before intent rewrites.
 		$spellings = [
 			'/\be-mail\b/i'      => 'email',
 			'/\bcall\s*forward\b/i' => 'call forward',
@@ -195,6 +199,22 @@ class Interpret {
 			return 'help';
 		}
 
+		return $work;
+	}
+
+	/**
+	 * Remove end-of-message urgency/tone phrases. Anchoring this at the end
+	 * avoids stripping ordinary words from entity names and search text.
+	 */
+	private static function stripTrailingTone($msg) {
+		$work = $msg;
+		$patterns = [
+			'/\s+(?:quickly|asap|ASAP|right\s+away|straight\s+away|immediately|now|today)\s*$/',
+			'/\s+(?:when\s+you\s+can|if\s+you\s+can|for\s+me)\s*$/',
+		];
+		foreach ($patterns as $pattern) {
+			$work = preg_replace($pattern, '', $work);
+		}
 		return $work;
 	}
 
