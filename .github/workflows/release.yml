@@ -47,15 +47,27 @@ jobs:
     steps:
       - name: Checkout at tag
         uses: actions/checkout@v4
-        with:
-          # The default fetch is `--no-tags +<sha>:refs/tags/<name>`, which
-          # creates a local ref pointing straight at the commit — the annotated
-          # tag OBJECT is never downloaded. `git for-each-ref %(contents)` on
-          # that lightweight ref returns the COMMIT message, not the tag
-          # annotation. v1.6.8 shipped with the commit subject as its body
-          # because of this. `fetch-tags: true` pulls the tag object alongside
-          # the commit so %(contents) returns the annotation as intended.
-          fetch-tags: true
+
+      - name: Fetch annotated tag object
+        run: |
+          set -euo pipefail
+          # The default checkout fetches `+<commit-sha>:refs/tags/<name>` with
+          # --no-tags. The local `refs/tags/<name>` ends up pointing straight
+          # at the commit — the annotated tag OBJECT is never downloaded, and
+          # `git for-each-ref %(contents)` returns the commit message instead
+          # of the tag annotation. v1.6.8 shipped with the commit subject as
+          # its release body because of this.
+          #
+          # Using `with: fetch-tags: true` on the checkout step instead causes
+          # a refspec conflict (the action's default `+<sha>:refs/tags/<name>`
+          # and the tag-fetch's `+refs/tags/*:refs/tags/*` both write the same
+          # destination — "Cannot fetch both" fatal). v1.6.9's first attempt
+          # broke on exactly that. The surgical fix is to fetch the tag ref
+          # explicitly here after checkout: the `+refs/tags/X:refs/tags/X`
+          # refspec downloads the annotated tag object and overwrites the
+          # lightweight local ref left by the checkout action.
+          TAG="${GITHUB_REF#refs/tags/}"
+          git fetch --depth=1 --no-tags origin "+refs/tags/${TAG}:refs/tags/${TAG}"
 
       - name: Extract version from tag
         id: version
