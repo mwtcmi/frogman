@@ -47,6 +47,15 @@ jobs:
     steps:
       - name: Checkout at tag
         uses: actions/checkout@v4
+        with:
+          # The default fetch is `--no-tags +<sha>:refs/tags/<name>`, which
+          # creates a local ref pointing straight at the commit — the annotated
+          # tag OBJECT is never downloaded. `git for-each-ref %(contents)` on
+          # that lightweight ref returns the COMMIT message, not the tag
+          # annotation. v1.6.8 shipped with the commit subject as its body
+          # because of this. `fetch-tags: true` pulls the tag object alongside
+          # the commit so %(contents) returns the annotation as intended.
+          fetch-tags: true
 
       - name: Extract version from tag
         id: version
