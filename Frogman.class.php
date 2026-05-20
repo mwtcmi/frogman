@@ -734,6 +734,39 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 				}
 				return implode("\n", $lines);
 
+			case 'fm_audit_admin_passwords':
+				if (empty($data['findings'])) {
+					return "✅ **Admin Password Audit** — No weak admin passwords found.";
+				}
+				$lines = ["**Admin Password Audit** — {$data['summary']}", ''];
+				foreach ($data['findings'] as $f) {
+					$icon = $this->severityIcon($f['severity']);
+					$user = $this->sanitizeForChat($f['username']);
+					$issueSan = $this->sanitizeForChat($f['issue']);
+					$recSan = $this->sanitizeForChat($f['recommendation']);
+					$lines[] = "  {$icon} Admin `{$user}` — {$issueSan}";
+					$lines[] = "      → {$recSan}";
+				}
+				return implode("\n", $lines);
+
+			case 'fm_audit_open_dial_patterns':
+				if (empty($data['findings'])) {
+					return "✅ **Open Dial Pattern Audit** — No overly permissive dial patterns found.";
+				}
+				$lines = ["**Open Dial Pattern Audit** — {$data['summary']}", ''];
+				foreach ($data['findings'] as $f) {
+					$icon = $this->severityIcon($f['severity']);
+					$rid = $this->sanitizeForChat($f['route_id']);
+					$nameSan = $f['route_name'] !== '' ? " `" . $this->sanitizeForChat($f['route_name']) . "`" : '';
+					$combined = $this->sanitizeForChat($f['combined']);
+					$issueSan = $this->sanitizeForChat($f['issue']);
+					$lines[] = "  {$icon} Route `{$rid}`{$nameSan} — pattern `{$combined}`";
+					$lines[] = "      {$issueSan}";
+				}
+				$lines[] = '';
+				$lines[] = "→ Tighten patterns, add a route password, or restrict via Outbound Routes.";
+				return implode("\n", $lines);
+
 			case 'fm_audit_posture':
 				$ran = count($data['audits']);
 				$withFindings = [];

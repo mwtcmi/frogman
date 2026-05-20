@@ -7,6 +7,8 @@ require_once __DIR__ . '/AuditExtensionSecrets.php';
 require_once __DIR__ . '/AuditOrphanDids.php';
 require_once __DIR__ . '/AuditOutboundInternational.php';
 require_once __DIR__ . '/AuditCallerIdPosture.php';
+require_once __DIR__ . '/AuditAdminPasswords.php';
+require_once __DIR__ . '/AuditOpenDialPatterns.php';
 
 class AuditPosture extends AbstractTool {
 
@@ -39,6 +41,8 @@ class AuditPosture extends AbstractTool {
 			['tool' => 'fm_audit_orphan_dids', 'class' => AuditOrphanDids::class, 'drilldown' => 'audit orphan dids', 'display_name' => 'Orphan DIDs'],
 			['tool' => 'fm_audit_outbound_international', 'class' => AuditOutboundInternational::class, 'drilldown' => 'audit international', 'display_name' => 'International Dialing'],
 			['tool' => 'fm_audit_caller_id_posture', 'class' => AuditCallerIdPosture::class, 'drilldown' => 'audit caller id', 'display_name' => 'Caller ID Posture'],
+			['tool' => 'fm_audit_admin_passwords', 'class' => AuditAdminPasswords::class, 'drilldown' => 'audit admin passwords', 'display_name' => 'Admin Passwords'],
+			['tool' => 'fm_audit_open_dial_patterns', 'class' => AuditOpenDialPatterns::class, 'drilldown' => 'audit open dial patterns', 'display_name' => 'Open Dial Patterns'],
 		];
 
 		$results = [];

@@ -1104,6 +1104,12 @@ class ChatParser {
 		if (preg_match('/^(audit|check|find)\s+(outbound\s+)?(caller\s*id|cid)(\s+posture)?$/i', $lower)) {
 			return ['tool' => 'fm_audit_caller_id_posture', 'params' => []];
 		}
+		if (preg_match('/^(audit|check)\s+(admin|gui|freepbx)?\s*(admin\s+)?passwords?$/i', $lower) || preg_match('/^(audit|check)\s+ampusers?$/i', $lower)) {
+			return ['tool' => 'fm_audit_admin_passwords', 'params' => []];
+		}
+		if (preg_match('/^(audit|check|find)\s+(open|permissive|loose)\s+(dial\s+)?patterns?$/i', $lower) || preg_match('/^(audit|check)\s+dial\s+patterns?$/i', $lower)) {
+			return ['tool' => 'fm_audit_open_dial_patterns', 'params' => []];
+		}
 		if (preg_match('/^(audit|check)\s+(all|posture|security)$/i', $lower) || preg_match('/^security\s+check$/i', $lower) || preg_match('/^posture(\s+check|\s+report)?$/i', $lower)) {
 			return ['tool' => 'fm_audit_posture', 'params' => []];
 		}
@@ -2030,6 +2036,8 @@ class ChatParser {
   `audit orphan dids` — find inbound routes with no destination
   `audit international` — find outbound routes that allow international dialing
   `audit caller id` — find bad/missing outbound Caller ID across trunks, routes, extensions
+  `audit admin passwords` — find FreePBX GUI admin accounts with weak/default passwords
+  `audit open dial patterns` — find outbound routes with overly permissive dial patterns
   `audit all` / `audit posture` / `security check` — run every audit and return a consolidated posture report
   `repair userman` / `fix ucp logins` — restore default-group + assigned wiring for UCP login
   `repair userman <ext>` — repair just one extension
