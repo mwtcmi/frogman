@@ -54,10 +54,13 @@ $(function() {
 		text = text.replace(/`([^`]+)`/g, function(m, code) { return '<code>' + escapeHtml(code) + '</code>'; });
 		// **bold** — same escape requirement.
 		text = text.replace(/\*\*(.+?)\*\*/g, function(m, body) { return '<strong>' + escapeHtml(body) + '</strong>'; });
-		// Markdown links: [text](url) — URL is constrained by the regex to https?:// so
-		// the scheme is safe. Text and URL both need attribute/body escape (URL could
-		// contain `"` that would break out of href="..." otherwise).
-		text = text.replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, function(m, txt, url) {
+		// Markdown links: [text](url) — URL must be absolute https?:// OR a root-
+		// relative path starting with a single `/` (not `//`, which is protocol-
+		// relative and could phish to another origin). escapeHtml still wraps the
+		// value so a stray `"` can't break out of href="...". javascript:/data:/
+		// vbscript: have no leading `/` or `http(s)://` so they fall through to
+		// plain text without matching.
+		text = text.replace(/\[([^\]]+)\]\(((?:https?:\/\/|\/(?!\/))[^)\s]+)\)/g, function(m, txt, url) {
 			return '<a href="' + escapeHtml(url) + '" target="_blank" class="oc-link">' + escapeHtml(txt) + '</a>';
 		});
 		text = text.replace(/\n/g, '<br>');
