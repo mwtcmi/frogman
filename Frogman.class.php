@@ -567,8 +567,72 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 				return $data['message'] ?? 'Reload complete.';
 
 			case 'fm_module_list':
-				if (empty($data['modules'])) return "No modules found.";
+				if (empty($data['modules'])) {
+					if (!empty($data['licensing'])) {
+						return "No commercial modules installed — nothing to license.";
+					}
+					return "No modules found.";
+				}
 				$upgCount = $data['upgrades_available'] ?? 0;
+
+				// Licensing view: two bulleted groups (Licensed / Unlicensed) plus a
+				// renewal link. Only emitted when the caller passed licensing:true.
+				// A module counts as licensed when Sysadmin's license map flags it true
+				// OR it has a non-expired expiry date from the CommercialLicense table.
+				if (($data['view'] ?? 'list') === 'licensing') {
+					$licensed = [];
+					$unlicensed = [];
+					foreach ($data['modules'] as $m) {
+						$hasFutureExpiry = !empty($m['expiry']) && empty($m['expired']);
+						if ($m['licensed'] === true || $hasFutureExpiry) {
+							$licensed[] = $m;
+						} else {
+							$unlicensed[] = $m;
+						}
+					}
+
+					$lines = ["**Module Licensing** — {$data['count']} commercial • " . count($licensed) . " licensed, " . count($unlicensed) . " unlicensed"];
+					$support = $data['support_contract'] ?? null;
+					if (is_array($support)) {
+						if (!empty($support['expired'])) {
+							$lines[] = "❌ Support contract **expired** (" . ($support['expiration_date'] ?: 'date unknown') . ")";
+						} elseif (!empty($support['expiring_soon'])) {
+							$lines[] = "⚠️ Support contract expiring soon (" . ($support['expiration_date'] ?: 'date unknown') . ")";
+						} elseif (!empty($support['expiration_date'])) {
+							$lines[] = "✅ Support contract active (expires {$support['expiration_date']})";
+						}
+					}
+					if (empty($data['sysadmin_available'])) {
+						$lines[] = "ℹ️ Sysadmin module not present — registration data unavailable.";
+					}
+
+					$renderRow = function($m) {
+						$name = $this->sanitizeForChat($m['name']);
+						$ver = $this->sanitizeForChat($m['version']);
+						$tail = '';
+						if (!empty($m['expired'])) {
+							$tail = " • expired {$m['expiry']}";
+						} elseif (!empty($m['expiry'])) {
+							$tail = " • expires {$m['expiry']}";
+						}
+						return "- {{cmd:module status {$name}|`{$name}`}} v{$ver}{$tail}";
+					};
+
+					if (!empty($licensed)) {
+						$lines[] = "\n**✅ Licensed** (" . count($licensed) . ")";
+						foreach ($licensed as $m) $lines[] = $renderRow($m);
+					}
+					if (!empty($unlicensed)) {
+						$lines[] = "\n**❌ Unlicensed** (" . count($unlicensed) . ")";
+						foreach ($unlicensed as $m) $lines[] = $renderRow($m);
+					}
+
+					if (!empty($data['renewal_url'])) {
+						$lines[] = "\n[🔗 Renew at Sangoma portal]({$data['renewal_url']})";
+					}
+					$lines[] = "{{cmd:update activation|🔄 Refresh activation}} • {{cmd:list modules|← back to modules}}";
+					return implode("\n", $lines);
+				}
 
 				// Summary view: counts per license bucket as clickable filters. Avoids dumping
 				// 100+ modules into chat when the user just typed "list modules".
@@ -588,7 +652,11 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 						$key = $bucketKey[$name];
 						$lines[] = "  {{cmd:list modules {$key}|{$name} ({$cnt})}}";
 					}
-					$lines[] = "\n{{cmd:list all modules|Show all}} • {{cmd:check for upgrades|⬆️ Check for upgrades}}";
+					$footer = "\n{{cmd:list all modules|Show all}} • {{cmd:check for upgrades|⬆️ Check for upgrades}}";
+					if (($buckets['Commercial'] ?? 0) > 0) {
+						$footer .= " • {{cmd:show licensing|🔐 Licensing}}";
+					}
+					$lines[] = $footer;
 					return implode("\n", $lines);
 				}
 
@@ -1416,11 +1484,19 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 				$lic = $data['license'] ?? [];
 				// Background mode: tool kicked off `fwconsole sa activate` async because
 				// it restarts apache. Skip the System/Activation block (would be misleading
-				// mid-restart) and surface a clickable sc status follow-up.
+				// mid-restart) and surface a clickable show-license follow-up so the user
+				// can verify the new license once apache returns. (fm_sc_status was parked
+				// in v1.6.0 along with other commercial-module integrations; show license
+				// reads license state via BMO and works regardless.)
 				if (!empty($data['background'])) {
 					$msg = $data['message'] ?? 'Activation refresh started.';
-					$msg = str_replace('`sc status`', '{{cmd:sc status|sc status}}', $msg);
-					$lines = ["✅ **{$msg}**"];
+					$msg = str_replace('`show license`', '{{cmd:show license|show license}}', $msg);
+					// No bold wrap on $msg — it contains a {{cmd:...}} chip, and the chat
+					// formatter runs the chip-to-span conversion before the bold regex.
+					// Wrapping `**...**` around an already-rendered span causes the bold
+					// regex to escapeHtml the span markup back to literal text. Keep the
+					// emphasis on just the leading icon/keyword instead.
+					$lines = ["✅ {$msg}"];
 					if (!empty($data['deployment_id'])) {
 						$lines[] = "  🔑 Deployment: `{$data['deployment_id']}`";
 					}
@@ -1735,28 +1811,200 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 				return "🛡️ **Security Scan Complete**\n\n  {$result}";
 
 			case 'fm_list_notifications':
+				// FreePBX modules sometimes embed raw HTML in display_text + extended_text
+				// (Font Awesome icon spans, inline styles, even full HTML tables for things
+				// like the Commercial Module Maintenance notification). The chat client's
+				// escapeHtml renders that markup as literal text in the output, and a naive
+				// strip_tags glues adjacent block elements ("ModuleExpires OnPaging Pro08
+				// Jun 2026"). Inject visible separators at block boundaries before stripping,
+				// then sanitize for chat-formatter breakout chars.
+				$cleanNotifText = function($raw) {
+					$raw = (string)$raw;
+					// Preserve `<a href='X'>label</a>` as a markdown link. FreePBX modules
+					// embed admin-page links in notifications (e.g. "Port Management Page" in
+					// the scd_requirement_* notifications); strip_tags would otherwise erase
+					// them. We can't emit the `[...](url)` here because sanitizeForChat below
+					// will neutralize the `[`, so we stash each rendered link under a sentinel
+					// that survives both strip_tags and sanitize, and restore them last.
+					$linkPlaceholders = [];
+					$raw = preg_replace_callback(
+						'#<a\b[^>]*\bhref\s*=\s*[\'"]([^\'"]+)[\'"][^>]*>(.*?)</a>#is',
+						function($m) use (&$linkPlaceholders) {
+							$url = trim($m[1]);
+							$label = trim(html_entity_decode(strip_tags($m[2]), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+							if ($url === '' || $label === '') return $label;
+							// Bare FreePBX admin paths ("config.php?...") become root-relative;
+							// the chat formatter's link regex requires a leading "/" or "http(s)://".
+							if (!preg_match('#^(https?:|/)#i', $url)) {
+								$url = '/admin/' . ltrim($url, './');
+							}
+							// Same scheme allowlist the client-side renderer enforces — bail to
+							// plain label text on anything dangerous so the link is dropped, not
+							// neutered into an exploitable shape.
+							if (preg_match('/^(?:javascript|data|vbscript):/i', $url)) return $label;
+							// Escape characters that would terminate the markdown-link syntax.
+							$label = str_replace(']', ')', $label);
+							$url = str_replace([')', ' ', '"'], ['%29', '%20', '%22'], $url);
+							$idx = count($linkPlaceholders);
+							$linkPlaceholders[$idx] = "[{$label}]({$url})";
+							return "__FMLINK{$idx}END__";
+						},
+						$raw
+					);
+					// Specific separators for block-level / table elements before stripping.
+					$raw = preg_replace('#</(?:p|div|h[1-6]|tr|li|ul|ol)>#i', ' · ', $raw);
+					$raw = preg_replace('#</(?:td|th)>#i', ' | ', $raw);
+					$raw = preg_replace('#<br\s*/?>#i', ' · ', $raw);
+					// Inline tags (e.g. </strong><table>) still glue their text together.
+					// Inject a space before every remaining tag so strip_tags leaves a gap.
+					$raw = str_replace('<', ' <', $raw);
+					$plain = html_entity_decode(strip_tags($raw), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+					$plain = preg_replace('/\s+/', ' ', trim($plain));
+					// Collapse doubled separators that adjacent closing tags produced.
+					$plain = preg_replace('/(?:\s*·\s*){2,}/', ' · ', $plain);
+					$plain = preg_replace('/(?:\s*\|\s*){2,}/', ' | ', $plain);
+					// A pipe ending a table row immediately before the row separator just
+					// reads as noise. `</td></tr>` → ` | ` + ` · ` → ` | · ` → ` · `.
+					$plain = preg_replace('/\s*\|\s*·\s*/', ' · ', $plain);
+					$plain = trim($plain, " ·|");
+					$plain = $this->sanitizeForChat($plain);
+					// Linkify GHSA IDs to the FreePBX security-reporting repo's advisory page,
+					// which is where FreePBX-module advisories are published (the global
+					// /advisories/<id> endpoint 404s because the entries aren't promoted to
+					// GitHub's global database). Pattern is fixed-format so the regex captures
+					// cleanly; the resulting `[...](url)` is formatter-controlled output, not
+					// user input, so it intentionally lands after sanitizeForChat (which would
+					// otherwise neutralize the leading `[`).
+					$plain = preg_replace_callback('/\bGHSA(?:-[a-z0-9]{4}){3}\b/i', function($m) {
+						return "[{$m[0]}](https://github.com/FreePBX/security-reporting/security/advisories/{$m[0]})";
+					}, $plain);
+					// Restore link placeholders. Built from validated URLs + sanitized labels
+					// above, so this is trusted formatter output, not user input.
+					if (!empty($linkPlaceholders)) {
+						$plain = preg_replace_callback('/__FMLINK(\d+)END__/', function($m) use ($linkPlaceholders) {
+							return $linkPlaceholders[(int)$m[1]] ?? '';
+						}, $plain);
+					}
+					return $plain;
+				};
+
 				// Single notification detail view
 				if (!empty($data['single'])) {
 					$levelIcons = ['error' => '🔴', 'warning' => '🟡', 'update' => '🔵', 'notice' => '💬', 'critical' => '🚨', 'security' => '🔒'];
 					$icon = $levelIcons[$data['level']] ?? '📋';
-					$lines = ["{$icon} **{$data['text']}**"];
+					$titleText = $cleanNotifText($data['text']);
+					$lines = ["{$icon} **{$titleText}**"];
+					$isTampered = $data['id'] === 'FW_TAMPERED';
+					$isUnsigned = $data['id'] === 'FW_UNSIGNED';
 					if (!empty($data['details'])) {
 						$isUpdates = $data['id'] === 'NEWUPDATES';
-						foreach (explode("\n", $data['details']) as $detail) {
-							$detail = trim($detail);
+						$hasPendingSecurity = false;
+						// Some FreePBX notifications separate their detail lines with `<br>`
+						// (FW_TAMPERED, FW_UNSIGNED) rather than literal newlines — normalize
+						// to "\n" before splitting so per-line regexes see one finding at a time.
+						$detailsForSplit = preg_replace('#<br\s*/?>#i', "\n", (string)$data['details']);
+						// Some FreePBX notifications duplicate their detail lines (notably
+						// VULNERABILITIES_FIXED, which lists each module's fix twice). Dedupe
+						// by exact line content so the user sees each finding once.
+						$rawDetails = array_unique(array_map('trim', explode("\n", $detailsForSplit)));
+						foreach ($rawDetails as $detail) {
 							if (empty($detail)) continue;
-							// Make upgrade lines clickable
+							// Make upgrade lines clickable. Module names from FreePBX are tightly
+							// constrained (alpha + _) so the regex captures are safe to inline raw.
+
+							// NEWUPDATES shape: "<module> <new_version> (current: <cur_version>)"
 							if ($isUpdates && preg_match('/^(\S+)\s+(\S+)\s+\(current:\s+(\S+)\)/', $detail, $um)) {
 								$lines[] = "  {{cmd:module status {$um[1]}|{$um[1]}}} v{$um[3]} ⬆️ {{cmd:upgrade module {$um[1]}|v{$um[2]}}}";
-							} else {
-								$lines[] = "  {$detail}";
+								continue;
 							}
+
+							// VULNERABILITIES shape: "<module> (Cur v. <cur>) should be upgraded to v. <target> to fix security issues: GHSA-..."
+							// Action-required line → render with the same chip pair plus linkified GHSA refs.
+							// The "to fix security issues:" prose is redundant once the GHSA link is
+							// rendered, so strip the lead-in and just emit the GHSA reference(s) directly.
+							if (preg_match('/^(\S+)\s+\(Cur v\.\s+(\S+)\)\s+should be upgraded to v\.\s+(\S+)(.*)$/i', $detail, $vm)) {
+								$mod = $vm[1];
+								$cur = $vm[2];
+								$target = $vm[3];
+								$tail = trim($vm[4]);
+								$tail = preg_replace('/^to fix security issues?:?\s*/i', '', $tail);
+								$tailRendered = $tail !== '' ? ' · ' . $cleanNotifText($tail) : '';
+								$lines[] = "  {{cmd:module status {$mod}|{$mod}}} v{$cur} ⬆️ {{cmd:upgrade module {$mod}|v{$target}}}{$tailRendered}";
+								$hasPendingSecurity = true;
+								continue;
+							}
+
+							// FW_TAMPERED shape: `Module: "<display>", File: "<path> altered"`.
+							// Extract internal module name from the path (everything between
+							// /modules/ and the next /) so the chip resolves to a usable
+							// `module status <internal>` command — display names like "CDR Reports"
+							// don't address the module in FreePBX, the internal name "cdr" does.
+							if ($isTampered && preg_match('/^Module:\s*"([^"]+)",\s*File:\s*"(.+?)\s+altered"\s*$/i', $detail, $tm)) {
+								$displayName = $tm[1];
+								$filePath = $tm[2];
+								$internal = '';
+								if (preg_match('#/modules/([^/]+)/#', $filePath, $pm)) {
+									$internal = $pm[1];
+								}
+								$dispSan = $this->sanitizeForChat($displayName);
+								$pathSan = $this->sanitizeForChat($filePath);
+								if ($internal !== '' && preg_match('/^[a-zA-Z0-9_]+$/', $internal)) {
+									$lines[] = "  {{cmd:module status {$internal}|{$dispSan}}} · `{$pathSan}`";
+								} else {
+									$lines[] = "  **{$dispSan}** · `{$pathSan}`";
+								}
+								continue;
+							}
+
+							// FW_UNSIGNED shape: `Module "<display>" is unsigned and should be re-downloaded`.
+							// No internal name in the text — best we can do is bold the display name
+							// and let the user re-download via module install/upgrade tools.
+							if ($isUnsigned && preg_match('/^Module\s+"([^"]+)"\s+is unsigned/i', $detail, $um)) {
+								$displayName = $this->sanitizeForChat($um[1]);
+								$lines[] = "  **{$displayName}** is unsigned and should be re-downloaded";
+								continue;
+							}
+
+							$lines[] = "  " . $cleanNotifText($detail);
 						}
 						if ($isUpdates) {
+							$lines[] = "\n{{cmd:upgrade all modules|⬆️ Upgrade All}}";
+						} elseif ($hasPendingSecurity) {
 							$lines[] = "\n{{cmd:upgrade all modules|⬆️ Upgrade All}}";
 						}
 					} else {
 						$lines[] = "  No additional details.";
+					}
+					// Sangoma portal renewal links for module-maintenance notifications.
+					// The FW about_to_exp_* notification family points at different portal
+					// "viewReport" pages depending on which entitlement type is expiring:
+					// commercial sales modules, 1-year sales-by-deployment, and softphone.
+					// Populated as we identify the notification ID for each variant in the
+					// wild — about_to_exp_WL is the standard commercial-module case.
+					$renewalUrls = [
+						'about_to_exp_WL' => 'https://portal.sangoma.com/index.php/report/viewReport/283',
+						// TODO: add IDs for "1-Year Sales Modules By Deployment" and
+						// "Softphone-Module Renewal By Deployment" once their notifications
+						// surface so we can map each to its own portal report URL.
+					];
+					$notifId = $data['id'] ?? '';
+					if (!empty($renewalUrls[$notifId])) {
+						$lines[] = "\n[🔗 Renew at Sangoma portal]({$renewalUrls[$notifId]})";
+					}
+
+					// Dismiss chip — only emit when FreePBX flags the notification as
+					// user-dismissable (candelete=1). BADDEST and similar config-error
+					// notifications are candelete=0 and silently no-op through safe_delete,
+					// so offering the chip would be misleading. The chat-formatter check
+					// keeps the UI honest; the tool also fails loudly server-side if
+					// someone hand-types `dismiss notification BADDEST`.
+					$notifModule = $data['module'] ?? '';
+					$canDismiss = !empty($data['candelete']);
+					if ($canDismiss && $notifModule !== '' && $notifId !== ''
+						&& preg_match('/^[a-zA-Z0-9_-]+$/', $notifModule)
+						&& preg_match('/^[a-zA-Z0-9_-]+$/', $notifId)
+					) {
+						$lines[] = "\n{{cmd:dismiss notification {$notifModule} {$notifId}|⛔ Dismiss notification}}";
 					}
 					return implode("\n", $lines);
 				}
@@ -1773,7 +2021,7 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 				$lines = ["**Notifications** ({$data['count']}):"];
 				foreach ($data['notifications'] as $n) {
 					$icon = $levelIcons[$n['level']] ?? '📋';
-					$text = $n['text'];
+					$text = $cleanNotifText($n['text']);
 					$action = '';
 					if ($n['id'] === 'NEWUPDATES') {
 						$action = " — {{cmd:list modules|view}} | {{cmd:upgrade all modules|upgrade all}}";
@@ -2119,7 +2367,11 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 						return ($d['driver'] ?? '?') . ': ' . ($d['name'] ?? $d['id'] ?? '?');
 					}, $job['destinations'] ?? []);
 					$dest = !empty($destNames) ? implode(', ', $destNames) : '(no destination)';
-					$lines[] = "  {$enabled} **{{cmd:backup status for {$job['name']}|{$job['name']}}}** — {$schedule} → {$dest}";
+					// No bold around the {{cmd:...}} chip — the chat formatter's bold regex
+					// escapeHtml's its captured body, mangling the chip's rendered <span>
+					// into literal text. The chip's clickable styling provides enough
+					// emphasis on its own.
+					$lines[] = "  {$enabled} {{cmd:backup status for {$job['name']}|{$job['name']}}} — {$schedule} → {$dest}";
 				}
 				return implode("\n", $lines);
 

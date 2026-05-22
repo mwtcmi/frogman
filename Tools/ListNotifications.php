@@ -20,6 +20,11 @@ class ListNotifications extends AbstractTool {
 						'id' => $item['id'],
 						'text' => $item['display_text'] ?? '',
 						'details' => trim($item['extended_text'] ?? ''),
+						// FreePBX sets candelete=0 on config-error notifications (BADDEST,
+						// etc.) — these can only clear by fixing the underlying config, not
+						// by user dismissal. The formatter checks this before offering a
+						// dismiss chip; fm_delete_notification refuses with a useful error.
+						'candelete' => !empty($item['candelete']),
 					];
 				}
 			}
@@ -40,6 +45,7 @@ class ListNotifications extends AbstractTool {
 						'id' => $item['id'] ?? '',
 						'text' => $item['display_text'] ?? '',
 						'details' => $extended,
+						'candelete' => !empty($item['candelete']),
 					];
 				}
 			}

@@ -1074,6 +1074,10 @@ class ChatParser {
 		}
 
 		// ── Modules ──
+		// "show licensing" / "list module licensing" → commercial bucket with Sangoma registration data
+		if (preg_match('/^(show|list)\s+(module\s+)?licens(e|ing|es)$/i', $lower)) {
+			return ['tool' => 'fm_module_list', 'params' => ['licensing' => true]];
+		}
 		// "list all modules" / "list modules all" → full grouped list (escape hatch for the wall view)
 		if (preg_match('/^(list|show)\s+(all\s+modules?|modules?\s+all)$/i', $lower)) {
 			return ['tool' => 'fm_module_list', 'params' => ['all' => true]];
@@ -1676,6 +1680,21 @@ class ChatParser {
 		if (preg_match('/^show\s+notification\s+(\S+)$/i', $msg, $m)) {
 			return ['tool' => 'fm_list_notifications', 'params' => ['id' => $m[1]]];
 		}
+		// Two-argument form (module + id) used by formatter dismiss chips. Order
+		// matters: this must come before the single-argument form so it wins on
+		// inputs like "dismiss notification freepbx FW_TAMPERED".
+		if (preg_match('/^(?:dismiss|delete)\s+notification\s+(\S+)\s+(\S+)$/i', $msg, $m)) {
+			$params = ['module' => $m[1], 'id' => $m[2]];
+			self::setPending($sessionId, 'fm_delete_notification', $params);
+			return ['tool' => 'fm_delete_notification', 'params' => $params];
+		}
+		// Single-argument form for users typing manually after `list notifications`.
+		// The tool resolves the module field via Notifications->list_all().
+		if (preg_match('/^(?:dismiss|delete)\s+notification\s+(\S+)$/i', $msg, $m)) {
+			$params = ['id' => $m[1]];
+			self::setPending($sessionId, 'fm_delete_notification', $params);
+			return ['tool' => 'fm_delete_notification', 'params' => $params];
+		}
 
 		// ── Show any dialplan context ──
 		if (preg_match('/^(show|get)\s+asterisk\s+context\s+(\S+)$/i', $msg, $m)) {
@@ -2048,6 +2067,7 @@ class ChatParser {
   `reload` / `need reload` / `check reload`
   `list modules` (summary; click a license bucket to drill in)
   `list all modules` / `list modules <commercial|gpl|gpl2|gpl3|agpl|other>`
+  `show licensing` — commercial modules with registration/expiry + renewal link
   `check for upgrades` — query online repos (~10s)
   `module status <name>`
   `asterisk info` / `uptime` / `sys info` / `system info`
@@ -2183,7 +2203,8 @@ class ChatParser {
   `validate` — security scan
   `fix permissions` — run chown
   `external ip` — get public IP
-  `list notifications`
+  `list notifications` / `show notification <id>`
+  `dismiss notification <id>` — acknowledge and remove a system notification
   `list sound packs`
   `show asterisk context <name>`
   `sync userman` / `system update`
