@@ -79,10 +79,19 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 			// prefix is self-describing and lets install.php run an idempotent migration.
 			// See GHSA-9xf5-9ghq-p6cw.
 			$tokenStored = 'sha256$' . hash('sha256', $token);
-			$sth = $this->db->prepare("SELECT username, level FROM oc_api_tokens WHERE token = ? AND active = 1");
+			$sth = $this->db->prepare("SELECT id, username, level, last_used_at FROM oc_api_tokens WHERE token = ? AND active = 1");
 			$sth->execute([$tokenStored]);
 			$row = $sth->fetch(\PDO::FETCH_ASSOC);
 			if ($row) {
+				// Stamp last_used_at for the Tokens sidebar (stale-badge + recency column).
+				// Throttled at 60s to keep wallboard-style pollers from hammering the row —
+				// the dashboard only needs minute-grade freshness, and a write-per-request
+				// would be wasted I/O on hot tokens.
+				$now = time();
+				if ((int)($row['last_used_at'] ?? 0) < $now - 60) {
+					$upd = $this->db->prepare("UPDATE oc_api_tokens SET last_used_at = ? WHERE id = ?");
+					$upd->execute([$now, (int)$row['id']]);
+				}
 				$this->authContext = ['user' => $row['username'], 'level' => $row['level']];
 				return $this->authContext['user'];
 			}
@@ -288,7 +297,7 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 	 * still raw-HTML territory. Any new formatter case that interpolates a
 	 * free-form field must use this helper + backtick wrapping.
 	 */
-	private function sanitizeForChat($value) {
+	public function sanitizeForChat($value) {
 		$value = (string)$value;
 		// Strip control chars (CRLF, NUL, etc.) — could disrupt rendering or
 		// be used to inject markup pieces.

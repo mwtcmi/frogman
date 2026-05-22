@@ -30,16 +30,28 @@ create token for mybot with read
 - `write` — read + create, update, delete PBX objects
 - `admin` — full access including system management
 
-**Save the token** — it cannot be retrieved again. Only a masked preview is shown in `list tokens`.
+**Save the token.** It cannot be retrieved again. `fm_list_api_tokens` only returns metadata (id, username, level, last-used recency, description); the token value itself is never recoverable after creation.
 
-**Revoke a token:**
+**Revoke a token** (soft; keeps the row as audit paper trail):
 ```bash
-# List tokens to find the ID
-fwconsole frogman:tool fm_list_api_tokens '{}'
+# By id
+fwconsole frogman:tool fm_revoke_api_token '{"id":1,"confirm":true}'
 
-# Revoke by ID
-fwconsole frogman:tool fm_revoke_api_token '{"id":"1","confirm":true}'
+# Or by username. Chat phrases also accept either word order:
+#   revoke api token mybot
+#   revoke mybot token
+fwconsole frogman:tool fm_revoke_api_token '{"username":"mybot","confirm":true}'
 ```
+
+**Permanently delete a revoked token** (hard; drops the row):
+```bash
+fwconsole frogman:tool fm_delete_api_token '{"id":1,"confirm":true}'
+# or: fm_delete_api_token '{"username":"mybot","confirm":true}'
+```
+
+The two-step Revoke → Delete is intentional: revoke is reversible (re-flip `active` in the DB), delete is final. Going active → revoked → deleted means an accidental click only loses you one step.
+
+**Web UI** (Frogman v1.8.2+): the left sidebar has a **Tokens** section that lists every token with its level, last-used recency, and a stale/never-used/revoked flag. Click a row to expand a detail card with the action button (Revoke for active, Delete for revoked). A `+ New token` entry at the top of the list opens the create chat wizard.
 
 ## Endpoints
 

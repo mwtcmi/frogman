@@ -120,3 +120,23 @@ try {
 	}
 	throw $e;
 }
+
+// Tokens sidebar / posture audit support — record when each token was last used
+// for auth. Powers the Tokens panel in views/main.php (stale-badge + last-used
+// column) and any future fm_audit_token_posture. Idempotent SHOW COLUMNS guard
+// mirrors the chat_input pattern above. 0 means "never used since the column
+// existed" — same convention as created_at (stored as Unix timestamp).
+try {
+	$tokenCols = $frogmanDb->query("SHOW COLUMNS FROM oc_api_tokens")->fetchAll(\PDO::FETCH_COLUMN);
+	if (!in_array('last_used_at', $tokenCols, true)) {
+		$frogmanDb->query("ALTER TABLE oc_api_tokens ADD COLUMN last_used_at INT UNSIGNED NOT NULL DEFAULT 0 AFTER created_at");
+	}
+	if (function_exists('out')) {
+		out(_("Frogman: ensured oc_api_tokens has last_used_at column."));
+	}
+} catch (\Throwable $e) {
+	if (function_exists('out')) {
+		out(_("Frogman: last_used_at migration failed — ") . $e->getMessage());
+	}
+	throw $e;
+}

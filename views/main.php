@@ -120,6 +120,13 @@
 		</div>
 
 		<div class="oc-sidebar-section">
+			<div class="oc-sidebar-header">Tokens <span id="oc-tokens-count" style="float:right;font-weight:normal;font-size:12px;opacity:0.7;"></span></div>
+			<div class="oc-sidebar-body" id="oc-tokens-list" style="max-height: 220px; overflow-y: auto;">
+				<div class="oc-tokens-empty" style="color: #999;">Loading...</div>
+			</div>
+		</div>
+
+		<div class="oc-sidebar-section">
 			<div class="oc-sidebar-header">Activity</div>
 			<div class="oc-sidebar-body" id="oc-audit-list" style="max-height: 200px; overflow-y: auto;">
 				<div class="oc-audit-entry" style="color: #999;">Loading...</div>

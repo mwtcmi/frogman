@@ -333,12 +333,140 @@ $(function() {
 		});
 	}
 
+	function refreshTokens() {
+		$.ajax({
+			url: 'ajax.php?module=frogman&command=tool',
+			method: 'POST',
+			contentType: 'application/json',
+			data: JSON.stringify({tool: 'fm_list_api_tokens', params: {}}),
+			dataType: 'json',
+			success: function(resp) {
+				var $list = $('#oc-tokens-list');
+				var $count = $('#oc-tokens-count');
+				$list.empty();
+				if (!resp || resp.status !== 'success' || !resp.data) {
+					$list.append('<div class="oc-tokens-empty">No access to token list</div>');
+					$count.text('');
+					return;
+				}
+				var tokens = (resp.data.tokens || []);
+				var activeCount = tokens.filter(function(t) { return t.active; }).length;
+				$count.text('(' + activeCount + ')');
+				$list.append(
+					'<div class="oc-tokens-new-row">' +
+						'<button class="oc-quick-btn oc-tokens-new" data-paste="create api token <username> with read">+ New token</button>' +
+					'</div>'
+				);
+				if (tokens.length === 0) {
+					$list.append('<div class="oc-tokens-empty">No tokens yet</div>');
+					return;
+				}
+				tokens.forEach(function(t) {
+					var level = (t.level || 'read').toLowerCase();
+					var levelClass = 'oc-tokens-level-' + (['read','write','admin'].indexOf(level) >= 0 ? level : 'read');
+					var badges = '';
+					if (!t.active)        badges += '<span class="oc-tokens-badge oc-tokens-badge-revoked">revoked</span>';
+					else if (t.never_used) badges += '<span class="oc-tokens-badge oc-tokens-badge-never">never used</span>';
+					else if (t.stale)      badges += '<span class="oc-tokens-badge oc-tokens-badge-stale">stale</span>';
+
+					// Action buttons follow the two-step destructive UX:
+					// active token  → Revoke (soft, keeps paper trail)
+					// revoked token → Delete (hard, DROPs the row)
+					// There's no "reactivate" tool, so requiring Revoke-first means an
+					// accidental Revoke leaves the row recoverable for one more deliberate step.
+					var actions = '';
+					if (t.active) {
+						actions = '<button class="oc-tokens-revoke" data-id="' + escapeHtml(String(t.id)) + '" data-user="' + escapeHtml(t.username) + '">Revoke</button>';
+					} else {
+						actions = '<button class="oc-tokens-delete" data-id="' + escapeHtml(String(t.id)) + '" data-user="' + escapeHtml(t.username) + '">Delete</button>';
+					}
+
+					var desc = t.description ? escapeHtml(t.description) : '<em>no description</em>';
+
+					var detail =
+						'<div class="oc-tokens-detail" hidden>' +
+							'<div class="oc-tokens-detail-row"><span class="oc-tokens-detail-label">id:</span>' + escapeHtml(String(t.id)) + '</div>' +
+							'<div class="oc-tokens-detail-row"><span class="oc-tokens-detail-label">description:</span>' + desc + '</div>' +
+							'<div class="oc-tokens-detail-row"><span class="oc-tokens-detail-label">created:</span>' + escapeHtml(t.created_at_human || '') + '</div>' +
+							'<div class="oc-tokens-detail-row"><span class="oc-tokens-detail-label">last used:</span>' + escapeHtml(t.last_used_human || 'never') + '</div>' +
+							actions +
+						'</div>';
+
+					$list.append(
+						'<div class="oc-tokens-entry">' +
+							'<div class="oc-tokens-row">' +
+								'<span class="oc-tokens-user">' + escapeHtml(t.username || '') + '</span>' +
+								'<span class="oc-tokens-level ' + levelClass + '">' + escapeHtml(level) + '</span>' +
+								'<span class="oc-tokens-last">' + escapeHtml(t.last_used_human || 'never') + '</span>' +
+								badges +
+							'</div>' +
+							detail +
+						'</div>'
+					);
+				});
+			},
+			error: function() {
+				$('#oc-tokens-list').empty().append('<div class="oc-tokens-empty">Could not load tokens</div>');
+			}
+		});
+	}
+
+	// Row click → expand inline detail. Action-button clicks fall through to their
+	// own handlers below (which stopPropagation so the row doesn't toggle).
+	$(document).off('click.octokens').on('click.octokens', '.oc-tokens-entry', function(e) {
+		if ($(e.target).is('.oc-tokens-revoke, .oc-tokens-delete')) return;
+		$(this).find('.oc-tokens-detail').toggle();
+	});
+
+	function tokenAction(actionLabel, toolName, $btn, confirmMsg) {
+		var id = $btn.data('id');
+		if (!confirm(confirmMsg)) return;
+		var origText = $btn.text();
+		$btn.prop('disabled', true).text(actionLabel + '…');
+		$.ajax({
+			url: 'ajax.php?module=frogman&command=tool',
+			method: 'POST',
+			contentType: 'application/json',
+			data: JSON.stringify({tool: toolName, params: {id: id, confirm: true}}),
+			dataType: 'json',
+			success: function(resp) {
+				if (resp && resp.status === 'success') {
+					refreshTokens();
+				} else {
+					$btn.prop('disabled', false).text(origText);
+					alert(actionLabel + ' failed: ' + (resp && resp.message ? resp.message : 'unknown error'));
+				}
+			},
+			error: function(xhr) {
+				$btn.prop('disabled', false).text(origText);
+				alert(actionLabel + ' failed: ' + (xhr.statusText || 'connection error'));
+			}
+		});
+	}
+
+	$(document).off('click.octokensrevoke').on('click.octokensrevoke', '.oc-tokens-revoke', function(e) {
+		e.stopPropagation();
+		var $btn = $(this);
+		var user = $btn.data('user');
+		tokenAction('Revoke', 'fm_revoke_api_token', $btn,
+			'Revoke token for "' + user + '"? The bot will stop authenticating. You can still see the row in the list for audit purposes.');
+	});
+
+	$(document).off('click.octokensdelete').on('click.octokensdelete', '.oc-tokens-delete', function(e) {
+		e.stopPropagation();
+		var $btn = $(this);
+		var user = $btn.data('user');
+		tokenAction('Delete', 'fm_delete_api_token', $btn,
+			'Permanently delete the revoked token for "' + user + '"? This drops the row from the database and cannot be undone.');
+	});
+
 	// Collapse all sidebar sections on load
 	$('.oc-sidebar-body').hide();
 
 	addMessage("Welcome to **Frogman**. Type a command or click a quick action. Type **help** for the full command list.", 'bot');
 	sendMessage('status');
 	refreshAudit();
+	refreshTokens();
 });
 
 }

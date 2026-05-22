@@ -790,13 +790,30 @@ class ChatParser {
 		if (preg_match('/^(list|show)\s+(api\s+)?tokens?$/i', $lower)) {
 			return ['tool' => 'fm_list_api_tokens', 'params' => []];
 		}
-		if (preg_match('/^revoke\s+(api\s+)?token\s+(\d+)$/i', $msg, $m)) {
-			$params = ['id' => $m[2]];
+		// Revoke / Delete tokens — accept either word order and either id or username.
+		// "revoke api token 7"        → id=7
+		// "revoke api token crisys"   → username=crisys
+		// "revoke crisys token"       → username=crisys
+		// "revoke 7 token"            → id=7
+		// Digits → id, anything else → username. The tool resolves the username to
+		// a row and refuses ambiguous matches (multiple rows for same username).
+		if (preg_match('/^revoke\s+(?:api\s+)?token\s+(\S+)$/i', $msg, $m)) {
+			$params = ctype_digit($m[1]) ? ['id' => (int)$m[1]] : ['username' => $m[1]];
 			self::setPending($sessionId, 'fm_revoke_api_token', $params);
 			return ['tool' => 'fm_revoke_api_token', 'params' => $params];
 		}
-		if (preg_match('/^delete\s+(api\s+)?token\s+(\d+)$/i', $msg, $m)) {
-			$params = ['id' => $m[2]];
+		if (preg_match('/^revoke\s+(\S+)\s+(?:api\s+)?token$/i', $msg, $m) && strcasecmp($m[1], 'api') !== 0) {
+			$params = ctype_digit($m[1]) ? ['id' => (int)$m[1]] : ['username' => $m[1]];
+			self::setPending($sessionId, 'fm_revoke_api_token', $params);
+			return ['tool' => 'fm_revoke_api_token', 'params' => $params];
+		}
+		if (preg_match('/^delete\s+(?:api\s+)?token\s+(\S+)$/i', $msg, $m)) {
+			$params = ctype_digit($m[1]) ? ['id' => (int)$m[1]] : ['username' => $m[1]];
+			self::setPending($sessionId, 'fm_delete_api_token', $params);
+			return ['tool' => 'fm_delete_api_token', 'params' => $params];
+		}
+		if (preg_match('/^delete\s+(\S+)\s+(?:api\s+)?token$/i', $msg, $m) && strcasecmp($m[1], 'api') !== 0) {
+			$params = ctype_digit($m[1]) ? ['id' => (int)$m[1]] : ['username' => $m[1]];
 			self::setPending($sessionId, 'fm_delete_api_token', $params);
 			return ['tool' => 'fm_delete_api_token', 'params' => $params];
 		}
@@ -2048,7 +2065,10 @@ class ChatParser {
   `repair userman <ext>` — repair just one extension
   `reset password for <user>` — reset a User Manager password
   `delete userman user <username>` / `delete userman user <uid>` — delete a Userman row (extension is NOT removed)
-  `revoke token <id>` — revoke an API token
+  `list api tokens` — list every API token (id, username, level, last used)
+  `create api token <username>` — generate a new API token (defaults to read; append ` with write` or ` with admin` to change level)
+  `revoke api token <id-or-username>` — soft-revoke (also accepts `revoke <id-or-username> token`)
+  `delete api token <id-or-username>` — permanently remove a revoked token row (also accepts `delete <id-or-username> token`)
 
 **Misc Destinations:**
   `list destinations`

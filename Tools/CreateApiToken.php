@@ -27,7 +27,9 @@ class CreateApiToken extends AbstractTool {
 		$confirm = !empty($params['confirm']) && $params['confirm'] === true;
 
 		if (!$confirm) {
-			return ['dry_run' => true, 'message' => "Would create API token for `{$username}` with `{$level}` access."];
+			$userSan = $this->frogman->sanitizeForChat($username);
+			$levelSan = $this->frogman->sanitizeForChat($level);
+			return ['dry_run' => true, 'message' => "Would create API token for `{$userSan}` with `{$levelSan}` access."];
 		}
 
 		// GHSA-9xf5-9ghq-p6cw — store `sha256$<hash>`; return the raw token to the
@@ -39,9 +41,10 @@ class CreateApiToken extends AbstractTool {
 		$sth = $db->prepare("INSERT INTO oc_api_tokens (username, token, description, level, active, created_at) VALUES (?, ?, ?, ?, 1, ?)");
 		$sth->execute([$username, $tokenStored, $description, $level, time()]);
 
+		$userSan = $this->frogman->sanitizeForChat($username);
 		return [
 			'dry_run' => false,
-			'message' => "API token created for `{$username}`.",
+			'message' => "API token created for `{$userSan}`.",
 			'token' => $token,
 			'level' => $level,
 			'note' => 'Save this token — it cannot be retrieved again. Use header: X-Frogman-Token',
