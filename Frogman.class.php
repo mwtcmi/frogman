@@ -1385,6 +1385,176 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 				$running = $d['running'] ? 'Yes' : 'No';
 				return "**SIP Trace Status:** Running: {$running} | Captured: {$d['capture_size_bytes']} bytes";
 
+			case 'fm_list_pcaps':
+				if (empty($data['captures'])) {
+					return "No packet captures found.\n\nStart one from [Sysadmin → Packet Capture](/admin/config.php?display=sysadmin&view=packetcapture), then run `list pcaps` again.";
+				}
+				$lines = ["**Packet captures** ({$data['count']} found):"];
+				$show = !empty($data['shown']) && (int)$data['shown'] === (int)$data['count']
+					? $data['captures']
+					: array_slice($data['captures'], 0, 3);
+				foreach ($show as $c) {
+					$path = $this->sanitizeForChat($c['path']);
+					$label = $this->sanitizeForChat($c['when'] . ' · ' . round($c['size_bytes'] / 1024) . ' KB');
+					$lines[] = "  📄 {{cmd:analyze pcap {$path}|{$label}}}";
+				}
+				$remaining = (int)$data['count'] - count($show);
+				if ($remaining > 0) {
+					$lines[] = "  {{cmd:list pcaps all|Show {$remaining} more}}";
+				}
+				return implode("\n", $lines);
+
+			case 'fm_analyze_pcap':
+				if (!empty($data['unsupported'])) {
+					$reason = $this->sanitizeForChat($data['reason'] ?? 'unsupported');
+					$hint = $this->sanitizeForChat($data['hint'] ?? '');
+					return "**PCAP analysis unsupported** — `{$reason}`" . ($hint !== '' ? "\n`{$hint}`" : '');
+				}
+				$lines = ["**PCAP SIP ladders** — {$data['sip_message_count']} SIP messages across {$data['call_count']} call(s)"];
+				if (!empty($data['analysis']['outcome_counts'])) {
+					$parts = [];
+					foreach ($data['analysis']['outcome_counts'] as $outcome => $count) {
+						$parts[] = $this->sanitizeForChat($outcome) . ': ' . (int)$count;
+					}
+					$lines[] = "Outcomes: `" . implode('` `', $parts) . "`";
+				}
+				if (!empty($data['analysis']['transport_counts'])) {
+					$parts = [];
+					foreach ($data['analysis']['transport_counts'] as $transport => $count) {
+						$parts[] = $this->sanitizeForChat($transport) . ': ' . (int)$count;
+					}
+					$lines[] = "Transports: `" . implode('` `', $parts) . "`";
+				}
+				if (!empty($data['analysis']['final_status_counts'])) {
+					$parts = [];
+					foreach ($data['analysis']['final_status_counts'] as $status) {
+						$parts[] = (int)$status['code'] . ' ' . $this->sanitizeForChat($status['reason'] ?? '') . ': ' . (int)$status['count'];
+					}
+					$lines[] = "Final statuses: `" . implode('` `', array_slice($parts, 0, 8)) . "`";
+				}
+				if (!empty($data['analysis']['observation_counts'])) {
+					$parts = [];
+					foreach ($data['analysis']['observation_counts'] as $obs => $count) {
+						$parts[] = $this->sanitizeForChat($obs) . ': ' . (int)$count;
+					}
+					$lines[] = "Observations: `" . implode('` `', array_slice($parts, 0, 8)) . "`";
+				}
+				if (!empty($data['analysis']['top_calls']) && ($data['call_count'] ?? 0) > 1) {
+					$lines[] = "";
+					$lines[] = "Most active calls:";
+					foreach (array_slice($data['analysis']['top_calls'], 0, 3) as $top) {
+						$topId = $this->sanitizeForChat($top['call_id'] ?? '');
+						$outcome = $this->sanitizeForChat($top['outcome'] ?? 'unknown');
+						$msgCount = (int)($top['message_count'] ?? 0);
+						$duration = (int)($top['duration_ms'] ?? 0);
+						$final = '';
+						if (!empty($top['final_status'])) {
+							$final = ' final `' . (int)$top['final_status']['code'] . ' ' . $this->sanitizeForChat($top['final_status']['reason'] ?? '') . '`';
+						}
+						$lines[] = "  `{$topId}` — `{$outcome}`, {$msgCount} msg, {$duration}ms{$final}";
+					}
+				}
+				if (!empty($data['truncated'])) {
+					$lines[] = "`Output was capped; use call_id or lower limits to narrow the result.`";
+				}
+				if (!empty($data['warnings'])) {
+					foreach (array_slice($data['warnings'], 0, 3) as $warning) {
+						$lines[] = "  Warning: `" . $this->sanitizeForChat($warning) . "`";
+					}
+				}
+				foreach (array_slice($data['calls'] ?? [], 0, 5) as $call) {
+					$callId = $this->sanitizeForChat($call['call_id'] ?? '');
+					$duration = (int)($call['duration_ms'] ?? 0);
+					$count = (int)($call['message_count'] ?? 0);
+					$outcome = !empty($call['summary']['outcome']) ? ' — `' . $this->sanitizeForChat($call['summary']['outcome']) . '`' : '';
+					$lines[] = "";
+					$lines[] = "Call-ID `{$callId}`{$outcome} — {$count} message(s), {$duration}ms";
+					if (!empty($call['summary'])) {
+						$summaryParts = [];
+						if (!empty($call['summary']['from'])) {
+							$summaryParts[] = "from " . $this->sanitizeForChat($call['summary']['from']);
+						}
+						if (!empty($call['summary']['to'])) {
+							$summaryParts[] = "to " . $this->sanitizeForChat($call['summary']['to']);
+						}
+						if (!empty($call['summary']['invite_final_status'])) {
+							$code = (int)$call['summary']['invite_final_status']['code'];
+							$reasonText = $this->sanitizeForChat($call['summary']['invite_final_status']['reason'] ?? '');
+							$summaryParts[] = "INVITE final {$code} {$reasonText}";
+						} elseif (!empty($call['summary']['final_status'])) {
+							$code = (int)$call['summary']['final_status']['code'];
+							$reasonText = $this->sanitizeForChat($call['summary']['final_status']['reason'] ?? '');
+							$methodText = $this->sanitizeForChat($call['summary']['final_status']['cseq_method'] ?? '');
+							$summaryParts[] = trim("final {$code} {$reasonText} {$methodText}");
+						}
+						if (!empty($call['summary']['release_reason'])) {
+							$summaryParts[] = "reason " . $this->sanitizeForChat($call['summary']['release_reason']);
+						}
+						if (!empty($call['summary']['observations'])) {
+							$summaryParts[] = "obs " . implode(', ', array_map([$this, 'sanitizeForChat'], array_slice($call['summary']['observations'], 0, 4)));
+						}
+						if (!empty($call['summary']['retransmissions'])) {
+							$summaryParts[] = "retrans " . (int)$call['summary']['retransmissions'];
+						}
+						if (!empty($call['summary']['largest_gap_ms'])) {
+							$summaryParts[] = "largest gap " . (int)$call['summary']['largest_gap_ms'] . "ms";
+						}
+						if (!empty($summaryParts)) {
+							$lines[] = "  Summary: `" . implode('` `', $summaryParts) . "`";
+						}
+						if (!empty($call['summary']['diagnostic_hints'])) {
+							foreach (array_slice($call['summary']['diagnostic_hints'], 0, 3) as $hint) {
+								$lines[] = "  Hint: `" . $this->sanitizeForChat($hint) . "`";
+							}
+						}
+						if (!empty($call['summary']['media'])) {
+							$mediaLines = [];
+							foreach (array_slice($call['summary']['media'], 0, 2) as $media) {
+								$mediaParts = [];
+								if (!empty($media['connection'])) {
+									$mediaParts[] = 'c=' . $this->sanitizeForChat($media['connection']);
+								}
+								foreach (array_slice($media['media'] ?? [], 0, 3) as $mline) {
+									$mediaParts[] = 'm=' . $this->sanitizeForChat($mline);
+								}
+								if (!empty($mediaParts)) $mediaLines[] = implode(' | ', $mediaParts);
+							}
+							if (!empty($mediaLines)) {
+								$lines[] = "  Media: `" . implode('` `', $mediaLines) . "`";
+							}
+						}
+					}
+					foreach (array_slice($call['messages'] ?? [], 0, 20) as $msg) {
+						$t = isset($msg['t_ms']) ? '+' . (int)$msg['t_ms'] . 'ms' : '';
+						$src = $this->sanitizeForChat($msg['src'] ?? '');
+						$dst = $this->sanitizeForChat($msg['dst'] ?? '');
+						$line = $this->sanitizeForChat($msg['line'] ?? '');
+						$cseq = !empty($msg['cseq']) ? " CSeq `" . $this->sanitizeForChat($msg['cseq']) . "`" : '';
+						$reason = !empty($msg['reason']) ? " Reason `" . $this->sanitizeForChat($msg['reason']) . "`" : '';
+						$lines[] = "  {$t} `{$src}` -> `{$dst}` `{$line}`{$cseq}{$reason}";
+						if (!empty($msg['sdp'])) {
+							$sdpParts = [];
+							if (!empty($msg['sdp']['connection'])) {
+								$sdpParts[] = 'c=' . $this->sanitizeForChat($msg['sdp']['connection']);
+							}
+							foreach (array_slice($msg['sdp']['media'] ?? [], 0, 3) as $media) {
+								$sdpParts[] = 'm=' . $this->sanitizeForChat($media);
+							}
+							if (!empty($sdpParts)) {
+								$lines[] = "      SDP `" . implode('` `', $sdpParts) . "`";
+							}
+						}
+					}
+					if ($count > 20) {
+						$lines[] = "  ... and " . ($count - 20) . " more message(s) in this call";
+					}
+				}
+				if (($data['call_count'] ?? 0) > 5) {
+					$lines[] = "";
+					$lines[] = "... and " . ((int)$data['call_count'] - 5) . " more call(s). Re-run with `call_id` to focus one ladder.";
+				}
+				return implode("\n", $lines);
+
 			case 'fm_list_filestores':
 				$locs = $data['locations']['locations'] ?? [];
 				$types = $data['locations']['filestoreTypes'] ?? [];

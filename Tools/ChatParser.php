@@ -1780,6 +1780,17 @@ class ChatParser {
 			return ['tool' => 'fm_update_certificates', 'params' => []];
 		}
 
+		// PcapAnalysis: list existing capture files so the user can pick one.
+		if (preg_match('/^(?:list|show)\s+(?:all\s+)?(?:pcaps|captures|packet\s+captures)(?:\s+all)?$/i', $msg)) {
+			$all = (bool)preg_match('/\ball\b/i', $msg);
+			return ['tool' => 'fm_list_pcaps', 'params' => $all ? ['all' => true] : []];
+		}
+
+		// PcapAnalysis: analyze an existing capture file by path.
+		if (preg_match('/^\s*(?:analyse|analyze)\s+(?:the\s+)?(?:pcap|capture)\s+(\S.*\.(?:pcap|cap))\s*$/i', $message, $m)) {
+			return ['tool' => 'fm_analyze_pcap', 'params' => ['path' => trim($m[1])]];
+		}
+
 		// ── Shorthand: just a number = get extension ──
 		if (preg_match('/^(\d{3,6})$/', $msg, $m)) {
 			return ['tool' => 'fm_get_extension', 'params' => ['ext' => $m[1]]];
@@ -2238,6 +2249,9 @@ class ChatParser {
   `why can't <ext> make calls` — same as above
   `diagnose trunk <id>` — trunk diagnostic (registration, qualify, routes, CDR)
   `endpoint details <ext>` — deep PJSIP endpoint info (codecs, transport, auth)
+  `list pcaps` — show available packet captures
+  `analyze pcap <path>` — decode a SIP capture by Call-ID
+  `analyse pcap <path>` — same command, accepted spelling alias
 
 **Call Flow Trace (Mermaid):**
   `trace flow <did>` — full destination chain rendered as a Mermaid diagram
