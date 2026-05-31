@@ -804,6 +804,7 @@ class PcapAnalysis extends AbstractTool {
 			'transport_counts' => $transports,
 			'top_calls' => array_slice($topCalls, 0, 10),
 			'reader_summary' => $this->deriveReaderSummary($calls, $decoded, $outcomes, $observations),
+			'focus' => $this->deriveFocusCall($calls),
 			'packet_count' => $decoded['packet_count'],
 		];
 	}
@@ -811,33 +812,40 @@ class PcapAnalysis extends AbstractTool {
 	private function deriveReaderSummary($calls, $decoded, $outcomes, $observations) {
 		$callCount = count($calls);
 		$sipCount = count($decoded['messages'] ?? []);
+		$inviteStats = $this->countInviteOutcomes($calls);
+		$nonInviteFailures = $this->countNonInviteFailures($calls);
 		$lines = [];
 		$lines[] = "This capture contains {$sipCount} SIP message(s) grouped into {$callCount} transaction(s) or call(s).";
 
-		$answered = (int)($outcomes['answered'] ?? 0);
+		$answered = (int)($inviteStats['answered'] ?? 0);
 		$completed = (int)($outcomes['completed'] ?? 0);
-		$failed = (int)($outcomes['failed'] ?? 0);
-		$busy = (int)($outcomes['busy'] ?? 0);
-		$cancelled = (int)($outcomes['cancelled'] ?? 0);
-		$incomplete = (int)($outcomes['incomplete_capture'] ?? 0);
+		$failed = (int)($inviteStats['failed'] ?? 0);
+		$busy = (int)($inviteStats['busy'] ?? 0);
+		$cancelled = (int)($inviteStats['cancelled'] ?? 0);
+		$incomplete = (int)($inviteStats['incomplete_capture'] ?? 0);
 		$authOnly = (int)($outcomes['auth_challenge'] ?? 0);
 
-		if ($failed || $busy || $cancelled || $incomplete) {
+		if ($inviteStats['total'] > 0 && ($failed || $busy || $cancelled || $incomplete)) {
 			$issues = [];
 			if ($failed) $issues[] = "{$failed} failed";
 			if ($busy) $issues[] = "{$busy} busy";
 			if ($cancelled) $issues[] = "{$cancelled} cancelled";
 			if ($incomplete) $issues[] = "{$incomplete} incomplete";
-			$lines[] = "Attention: " . implode(', ', $issues) . " signalling flow(s) need review.";
-		} elseif ($answered || $completed) {
+			$lines[] = "Attention: " . implode(', ', $issues) . " INVITE call flow(s) need review.";
+		} elseif ($inviteStats['total'] > 0 && $answered) {
+			$lines[] = "Main result: {$answered} INVITE call flow(s) reached 200 OK, so the captured calls look successful at SIP signalling level.";
+		} elseif ($completed) {
 			$ok = [];
-			if ($answered) $ok[] = "{$answered} answered INVITE flow(s)";
 			if ($completed) $ok[] = "{$completed} completed non-INVITE transaction(s)";
 			$lines[] = "Main result: " . implode(', ', $ok) . " reached successful SIP responses.";
 		} elseif ($authOnly) {
 			$lines[] = "Main result: authentication challenges were seen; these are often normal for SIP digest auth unless the flow stops there.";
 		} else {
 			$lines[] = "Main result: SIP signalling was decoded, but no clear completed call outcome was identified.";
+		}
+
+		if ($nonInviteFailures > 0 && $inviteStats['total'] > 0 && !$failed && !$busy && !$cancelled && !$incomplete) {
+			$lines[] = "{$nonInviteFailures} non-call transaction(s), such as OPTIONS/qualify checks, returned failure responses; that does not necessarily mean the captured calls failed.";
 		}
 
 		$notables = [];
@@ -862,29 +870,53 @@ class PcapAnalysis extends AbstractTool {
 			$lines[] = "No obvious SIP signalling fault was flagged from headers alone.";
 		}
 
-		$topProblem = $this->findMostRelevantCall($calls);
-		if ($topProblem !== null) {
-			$lines[] = "Best next step: focus Call-ID {$topProblem} if you want the most relevant ladder first.";
-		} elseif ($callCount > 1) {
+		if ($callCount > 1) {
 			$lines[] = "Best next step: re-run with a specific call_id to narrow the output to one ladder.";
 		}
 
 		return $lines;
 	}
 
-	private function findMostRelevantCall($calls) {
+	private function countInviteOutcomes($calls) {
+		$out = ['total' => 0];
+		foreach ($calls as $call) {
+			$methods = array_flip($call['summary']['methods'] ?? []);
+			if (!isset($methods['INVITE'])) continue;
+			$out['total']++;
+			$outcome = $call['summary']['outcome'] ?? 'unknown';
+			$out[$outcome] = ($out[$outcome] ?? 0) + 1;
+		}
+		return $out;
+	}
+
+	private function countNonInviteFailures($calls) {
+		$count = 0;
+		foreach ($calls as $call) {
+			$methods = array_flip($call['summary']['methods'] ?? []);
+			if (isset($methods['INVITE'])) continue;
+			$outcome = $call['summary']['outcome'] ?? 'unknown';
+			if ($outcome === 'failed') $count++;
+		}
+		return $count;
+	}
+
+	private function deriveFocusCall($calls) {
 		$best = null;
 		$bestScore = -1;
+		$bestReason = null;
 		foreach ($calls as $call) {
 			$summary = $call['summary'] ?? [];
 			$outcome = $summary['outcome'] ?? 'unknown';
+			$methods = array_flip($summary['methods'] ?? []);
 			$obs = array_flip($summary['observations'] ?? []);
 			$score = 0;
-			if ($outcome === 'failed') $score += 100;
-			elseif ($outcome === 'busy' || $outcome === 'cancelled') $score += 80;
-			elseif ($outcome === 'incomplete_capture') $score += 70;
-			elseif ($outcome === 'answered') $score += 30;
-			elseif ($outcome === 'auth_challenge') $score += 20;
+			$reason = 'most relevant SIP ladder';
+			if (isset($methods['INVITE']) && $outcome === 'failed') { $score += 120; $reason = 'failed INVITE call'; }
+			elseif (isset($methods['INVITE']) && ($outcome === 'busy' || $outcome === 'cancelled')) { $score += 100; $reason = "{$outcome} INVITE call"; }
+			elseif (isset($methods['INVITE']) && $outcome === 'incomplete_capture') { $score += 90; $reason = 'incomplete INVITE call'; }
+			elseif (isset($methods['INVITE']) && $outcome === 'answered') { $score += 40; $reason = 'answered call with the most signalling detail'; }
+			elseif ($outcome === 'failed') { $score += 35; $reason = 'failed non-call SIP transaction'; }
+			elseif ($outcome === 'auth_challenge') { $score += 15; $reason = 'authentication challenge transaction'; }
 			if (isset($obs['answered_without_ack_seen'])) $score += 40;
 			if (isset($obs['number_or_route_not_found'])) $score += 35;
 			if (isset($obs['retransmissions_seen'])) $score += 25;
@@ -894,9 +926,11 @@ class PcapAnalysis extends AbstractTool {
 			if ($score > $bestScore) {
 				$bestScore = $score;
 				$best = $call['call_id'] ?? null;
+				$bestReason = $reason;
 			}
 		}
-		return $best;
+		if ($best === null) return null;
+		return ['call_id' => $best, 'reason' => $bestReason];
 	}
 
 	private function isPrivateAddressInSdp($connection) {

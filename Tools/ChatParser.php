@@ -1786,6 +1786,11 @@ class ChatParser {
 			return ['tool' => 'fm_list_pcaps', 'params' => $all ? ['all' => true] : []];
 		}
 
+		// PcapAnalysis: analyze one Call-ID from an existing capture file by path.
+		if (preg_match('/^\s*(?:analyse|analyze)\s+(?:the\s+)?(?:pcap|capture)\s+(\S.*\.(?:pcap|cap))\s+call[_\s-]?id\s+(\S+)\s*$/i', $message, $m)) {
+			return ['tool' => 'fm_analyze_pcap', 'params' => ['path' => trim($m[1]), 'call_id' => trim($m[2])]];
+		}
+
 		// PcapAnalysis: analyze an existing capture file by path.
 		if (preg_match('/^\s*(?:analyse|analyze)\s+(?:the\s+)?(?:pcap|capture)\s+(\S.*\.(?:pcap|cap))\s*$/i', $message, $m)) {
 			return ['tool' => 'fm_analyze_pcap', 'params' => ['path' => trim($m[1])]];
@@ -2251,6 +2256,7 @@ class ChatParser {
   `endpoint details <ext>` — deep PJSIP endpoint info (codecs, transport, auth)
   `list pcaps` — show available packet captures
   `analyze pcap <path>` — decode a SIP capture by Call-ID
+  `analyze pcap <path> call_id <id>` — focus one SIP ladder
   `analyse pcap <path>` — same command, accepted spelling alias
 
 **Call Flow Trace (Mermaid):**

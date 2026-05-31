@@ -1559,6 +1559,12 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 					foreach (array_slice($data['analysis']['reader_summary'], 0, 5) as $summaryLine) {
 						$lines[] = "- " . $this->sanitizeForChat($summaryLine);
 					}
+					if (!empty($data['analysis']['focus']['call_id']) && !empty($data['path'])) {
+						$focusId = $this->sanitizeForChat($data['analysis']['focus']['call_id']);
+						$focusReason = $this->sanitizeForChat($data['analysis']['focus']['reason'] ?? 'focus this ladder');
+						$path = $this->sanitizeForChat($data['path']);
+						$lines[] = "{{cmd:analyze pcap {$path} call_id {$focusId}|Focus: {$focusReason}}}";
+					}
 				}
 				return implode("\n", $lines);
 
