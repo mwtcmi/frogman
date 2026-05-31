@@ -803,8 +803,100 @@ class PcapAnalysis extends AbstractTool {
 			'outcome_counts' => $outcomes,
 			'transport_counts' => $transports,
 			'top_calls' => array_slice($topCalls, 0, 10),
+			'reader_summary' => $this->deriveReaderSummary($calls, $decoded, $outcomes, $observations),
 			'packet_count' => $decoded['packet_count'],
 		];
+	}
+
+	private function deriveReaderSummary($calls, $decoded, $outcomes, $observations) {
+		$callCount = count($calls);
+		$sipCount = count($decoded['messages'] ?? []);
+		$lines = [];
+		$lines[] = "This capture contains {$sipCount} SIP message(s) grouped into {$callCount} transaction(s) or call(s).";
+
+		$answered = (int)($outcomes['answered'] ?? 0);
+		$completed = (int)($outcomes['completed'] ?? 0);
+		$failed = (int)($outcomes['failed'] ?? 0);
+		$busy = (int)($outcomes['busy'] ?? 0);
+		$cancelled = (int)($outcomes['cancelled'] ?? 0);
+		$incomplete = (int)($outcomes['incomplete_capture'] ?? 0);
+		$authOnly = (int)($outcomes['auth_challenge'] ?? 0);
+
+		if ($failed || $busy || $cancelled || $incomplete) {
+			$issues = [];
+			if ($failed) $issues[] = "{$failed} failed";
+			if ($busy) $issues[] = "{$busy} busy";
+			if ($cancelled) $issues[] = "{$cancelled} cancelled";
+			if ($incomplete) $issues[] = "{$incomplete} incomplete";
+			$lines[] = "Attention: " . implode(', ', $issues) . " signalling flow(s) need review.";
+		} elseif ($answered || $completed) {
+			$ok = [];
+			if ($answered) $ok[] = "{$answered} answered INVITE flow(s)";
+			if ($completed) $ok[] = "{$completed} completed non-INVITE transaction(s)";
+			$lines[] = "Main result: " . implode(', ', $ok) . " reached successful SIP responses.";
+		} elseif ($authOnly) {
+			$lines[] = "Main result: authentication challenges were seen; these are often normal for SIP digest auth unless the flow stops there.";
+		} else {
+			$lines[] = "Main result: SIP signalling was decoded, but no clear completed call outcome was identified.";
+		}
+
+		$notables = [];
+		if (!empty($observations['retransmissions_seen'])) {
+			$notables[] = "retransmissions were seen";
+		}
+		if (!empty($observations['large_signalling_gap'])) {
+			$notables[] = "multi-second signalling gaps were seen";
+		}
+		if (!empty($observations['private_sdp_connection_address'])) {
+			$notables[] = "private SDP media addresses were advertised";
+		}
+		if (!empty($observations['answered_without_ack_seen'])) {
+			$notables[] = "at least one answered call had no ACK in the capture";
+		}
+		if (!empty($observations['number_or_route_not_found'])) {
+			$notables[] = "a not-found response suggests a dialled number or route mismatch";
+		}
+		if (!empty($notables)) {
+			$lines[] = "Notable clues: " . implode('; ', $notables) . ".";
+		} else {
+			$lines[] = "No obvious SIP signalling fault was flagged from headers alone.";
+		}
+
+		$topProblem = $this->findMostRelevantCall($calls);
+		if ($topProblem !== null) {
+			$lines[] = "Best next step: focus Call-ID {$topProblem} if you want the most relevant ladder first.";
+		} elseif ($callCount > 1) {
+			$lines[] = "Best next step: re-run with a specific call_id to narrow the output to one ladder.";
+		}
+
+		return $lines;
+	}
+
+	private function findMostRelevantCall($calls) {
+		$best = null;
+		$bestScore = -1;
+		foreach ($calls as $call) {
+			$summary = $call['summary'] ?? [];
+			$outcome = $summary['outcome'] ?? 'unknown';
+			$obs = array_flip($summary['observations'] ?? []);
+			$score = 0;
+			if ($outcome === 'failed') $score += 100;
+			elseif ($outcome === 'busy' || $outcome === 'cancelled') $score += 80;
+			elseif ($outcome === 'incomplete_capture') $score += 70;
+			elseif ($outcome === 'answered') $score += 30;
+			elseif ($outcome === 'auth_challenge') $score += 20;
+			if (isset($obs['answered_without_ack_seen'])) $score += 40;
+			if (isset($obs['number_or_route_not_found'])) $score += 35;
+			if (isset($obs['retransmissions_seen'])) $score += 25;
+			if (isset($obs['large_signalling_gap'])) $score += 20;
+			if (isset($obs['private_sdp_connection_address'])) $score += 10;
+			$score += min((int)($call['message_count'] ?? 0), 20);
+			if ($score > $bestScore) {
+				$bestScore = $score;
+				$best = $call['call_id'] ?? null;
+			}
+		}
+		return $best;
 	}
 
 	private function isPrivateAddressInSdp($connection) {

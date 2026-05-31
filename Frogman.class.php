@@ -1553,6 +1553,13 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 					$lines[] = "";
 					$lines[] = "... and " . ((int)$data['call_count'] - 5) . " more call(s). Re-run with `call_id` to focus one ladder.";
 				}
+				if (!empty($data['analysis']['reader_summary'])) {
+					$lines[] = "";
+					$lines[] = "**Reader summary**";
+					foreach (array_slice($data['analysis']['reader_summary'], 0, 5) as $summaryLine) {
+						$lines[] = "- " . $this->sanitizeForChat($summaryLine);
+					}
+				}
 				return implode("\n", $lines);
 
 			case 'fm_list_filestores':
