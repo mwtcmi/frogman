@@ -519,9 +519,323 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 				if (empty($data['records'])) {
 					return "No CDR records found.";
 				}
-				$lines = ["**CDR** ({$data['count']} records):"];
+				$noteCdr = !empty($data['include_non_calls']) ? ' (including non-call records)' : '';
+				$lines = ["**CDR** ({$data['count']} records){$noteCdr}:"];
 				foreach ($data['records'] as $r) {
-					$lines[] = "  {$r['calldate']} | {$r['src']} → {$r['dst']} | {$r['disposition']} | {$r['duration']}s";
+					$src = $this->sanitizeForChat($r['src'] ?? '');
+					$dst = $this->sanitizeForChat($r['dst'] ?? '');
+					$disp = $this->sanitizeForChat($r['disposition'] ?? '');
+					$dur = (int)($r['duration'] ?? 0);
+					$lines[] = "  {$r['calldate']} | `{$src}` → `{$dst}` | `{$disp}` | {$dur}s";
+				}
+				return implode("\n", $lines);
+
+			case 'fm_get_busiest_extensions':
+				if (empty($data['extensions'])) {
+					return "No extension activity found in the window.";
+				}
+				$noteB = !empty($data['include_non_calls']) ? ' (including non-call records)' : '';
+				$lines = ["**Busiest extensions** ({$data['count']}){$noteB}:"];
+				foreach ($data['extensions'] as $e) {
+					$ext = $this->sanitizeForChat($e['extension']);
+					$nm  = $e['name'] !== '' ? ' `' . $this->sanitizeForChat($e['name']) . '`' : '';
+					$mix = [];
+					if ($e['inbound'])  $mix[] = "{$e['inbound']} in";
+					if ($e['outbound']) $mix[] = "{$e['outbound']} out";
+					if ($e['internal']) $mix[] = "{$e['internal']} internal";
+					$mixStr = $mix ? ' (' . implode(', ', $mix) . ')' : '';
+					$lines[] = "  {{cmd:show extension {$ext}|{$ext}}}{$nm} — {$e['calls']} calls{$mixStr} · avg {$e['avg_duration_s']}s";
+				}
+				return implode("\n", $lines);
+
+			case 'fm_get_peak_hours':
+				if (empty($data['hours']) || (int)($data['total_calls'] ?? 0) === 0) {
+					return "No call volume in the window.";
+				}
+				$noteP = !empty($data['include_non_calls']) ? ' (including non-call records)' : '';
+				$rawNote = '';
+				if (!empty($data['total_raw_rows']) && $data['total_raw_rows'] > $data['total_calls']) {
+					$collapsed = $data['total_raw_rows'] - $data['total_calls'];
+					$rawNote = " · {$collapsed} multi-leg rows collapsed";
+				}
+				$max = 0;
+				foreach ($data['hours'] as $h) { if ($h['calls'] > $max) $max = $h['calls']; }
+				$max = max(1, $max);
+				$lines = ["**Peak hours** — {$data['total_calls']} calls{$noteP}{$rawNote}:"];
+				foreach ($data['hours'] as $h) {
+					if ($h['calls'] === 0) continue;
+					$barLen = (int) round(($h['calls'] / $max) * 20);
+					$bar = str_repeat('▇', max(1, $barLen));
+					$lbl = sprintf('%02d:00', $h['hour']);
+					$lines[] = "  {$lbl}  {$bar} {$h['calls']}";
+				}
+				return implode("\n", $lines);
+
+			case 'fm_get_cdr_stats':
+				if (empty($data['by_disposition'])) {
+					return "No CDR activity in the window.";
+				}
+				$noteS = !empty($data['include_non_calls']) ? ' (including non-call records)' : '';
+				$totalCalls = (int)($data['total_calls'] ?? 0);
+				$totalRaw = (int)($data['total_raw_rows'] ?? 0);
+				$collapsed = $totalRaw > $totalCalls ? " · {$totalRaw} raw rows ({$totalCalls} after leg-dedup)" : '';
+				$lines = ["**CDR stats** — {$totalCalls} calls{$noteS}{$collapsed}:"];
+				foreach ($data['by_disposition'] as $d) {
+					$disp = $this->sanitizeForChat($d['disposition']);
+					$lines[] = "  `{$disp}` — {$d['count']} calls · avg {$d['avg_duration_s']}s · total {$d['duration_total_s']}s";
+				}
+				return implode("\n", $lines);
+
+			case 'fm_get_cel':
+				if (empty($data['rows'])) return "No CEL events in the window.";
+				// Group raw CEL events into per-call digests by linkedid. CEL emits
+				// 10-20 events per call (CHAN_START/END, STREAM_*, LOCAL_OPTIMIZE,
+				// etc.) so an event-per-line render drowns the interesting calls.
+				// Tool output is unchanged — only chat collapses; MCP/CLI clients
+				// still receive raw rows for composition.
+				$calls = [];
+				foreach ($data['rows'] as $r) {
+					$lid = (string)($r['linkedid'] ?? '');
+					if ($lid === '') continue;
+					if (!isset($calls[$lid])) {
+						$calls[$lid] = [
+							'linkedid' => $lid,
+							'start' => $r['eventtime'],
+							'end' => $r['eventtime'],
+							'cid_num' => '',
+							'cid_dnid' => '',
+							'answered' => false,
+							'bridges' => [],
+							'transfers' => 0,
+							'parks' => 0,
+							'pickups' => 0,
+							'complete' => false,
+						];
+					}
+					$c =& $calls[$lid];
+					if ($r['eventtime'] < $c['start']) $c['start'] = $r['eventtime'];
+					if ($r['eventtime'] > $c['end'])   $c['end']   = $r['eventtime'];
+					// First non-empty wins. For typical call flows the parties are
+					// stable across events; for transfer chains this picks a
+					// representative party (timeline view is the source of truth).
+					if ($c['cid_num']  === '' && !empty($r['cid_num']))  $c['cid_num']  = $r['cid_num'];
+					if ($c['cid_dnid'] === '' && !empty($r['cid_dnid'])) $c['cid_dnid'] = $r['cid_dnid'];
+					switch ($r['eventtype']) {
+						case 'ANSWER': $c['answered'] = true; break;
+						case 'BRIDGE_ENTER':
+							$bid = (is_array($r['extra']) && isset($r['extra']['bridge_id']))
+								? $r['extra']['bridge_id'] : null;
+							if ($bid !== null) $c['bridges'][$bid] = true;
+							break;
+						case 'BLINDTRANSFER':
+						case 'ATTENDEDTRANSFER': $c['transfers']++; break;
+						case 'PARK_START': $c['parks']++; break;
+						case 'PICKUP':     $c['pickups']++; break;
+						case 'LINKEDID_END': $c['complete'] = true; break;
+					}
+					unset($c);
+				}
+				uasort($calls, function($a, $b) { return strcmp($b['start'], $a['start']); });
+
+				$lines = ["**CEL events** — {$data['count']} events across " . count($calls) . " calls"];
+				$ec = $data['event_counts'] ?? [];
+				if (!empty($ec)) {
+					$summary = [];
+					foreach (array_slice($ec, 0, 5, true) as $type => $n) {
+						$summary[] = "`" . $this->sanitizeForChat($type) . "`:{$n}";
+					}
+					$lines[] = "  Top types: " . implode(' · ', $summary);
+				}
+				$lines[] = "";
+				foreach (array_slice(array_values($calls), 0, 20) as $c) {
+					$cid = $this->sanitizeForChat($c['cid_num']);
+					$dnid = $this->sanitizeForChat($c['cid_dnid']);
+					$bridgeCount = count($c['bridges']);
+					$dur = max(0, strtotime($c['end']) - strtotime($c['start']));
+					$marker = '📞';
+					if ($c['transfers'] > 0)    $marker = '🔀';
+					elseif ($c['parks'] > 0)    $marker = '⏸';
+					elseif ($c['pickups'] > 0)  $marker = '📥';
+					$ans = $c['answered'] ? '✓ answered' : '✗ no answer';
+					$brP = $bridgeCount === 1 ? '1 bridge' : "{$bridgeCount} bridges";
+					$tail = [];
+					if ($c['transfers'] > 0) $tail[] = $c['transfers'] === 1 ? '1 transfer' : "{$c['transfers']} transfers";
+					if ($c['parks']     > 0) $tail[] = 'parked';
+					if ($c['pickups']   > 0) $tail[] = 'picked up';
+					if (!$c['complete'])     $tail[] = 'partial';
+					$tailStr = $tail ? ' · ' . implode(' · ', $tail) : '';
+					$rawLid = $c['linkedid'];
+					$lidChip = (preg_match('/^\d+\.\d+$/', $rawLid) === 1)
+						? "{{cmd:show call timeline {$rawLid}|details}}"
+						: '`' . $this->sanitizeForChat($rawLid) . '`';
+					$arrow = ($cid !== '' || $dnid !== '') ? " — `{$cid}` → `{$dnid}`" : '';
+					$lines[] = "  {$marker} {$c['start']}{$arrow} · {$ans} · {$brP} · {$dur}s{$tailStr} · {$lidChip}";
+				}
+				if (count($calls) > 20) $lines[] = "  ... " . (count($calls) - 20) . " more";
+				return implode("\n", $lines);
+
+			case 'fm_call_timeline':
+				if (empty($data['found'])) {
+					return "**Call timeline** — no events for that linkedid.";
+				}
+				$lid = $this->sanitizeForChat($data['linkedid']);
+				$dur = (int)$data['duration_seconds'];
+				$lines = ["**Call timeline** `{$lid}` — {$dur}s, {$data['event_count']} CEL events"];
+				$lines[] = "  Started: {$data['started_at']} · Ended: {$data['ended_at']}";
+				if (!empty($data['channels'])) {
+					$lines[] = "  **Channels** (" . count($data['channels']) . "):";
+					foreach ($data['channels'] as $c) {
+						$cn = $this->sanitizeForChat($c['channame']);
+						$cid = $this->sanitizeForChat($c['cid_num']);
+						$ans = $c['answered'] ? '✓' : '✗';
+						$role = $this->sanitizeForChat($c['role']);
+						$lines[] = "    `{$cn}` · cid=`{$cid}` · role=`{$role}` · answered={$ans}";
+					}
+				}
+				if (!empty($data['bridges'])) {
+					$lines[] = "  **Bridges** (" . count($data['bridges']) . "):";
+					foreach ($data['bridges'] as $b) {
+						$bid = $this->sanitizeForChat($b['bridge_id']);
+						$lines[] = "    `{$bid}` · " . count($b['participants']) . " participant events";
+					}
+				}
+				if (!empty($data['transfers'])) {
+					$lines[] = "  **Transfers** (" . count($data['transfers']) . "):";
+					foreach ($data['transfers'] as $t) {
+						$tt = $this->sanitizeForChat($t['type']);
+						$te = $this->sanitizeForChat($t['transferer']['ext'] ?? '');
+						$tn = $t['transferer']['name'] !== '' ? ' `' . $this->sanitizeForChat($t['transferer']['name']) . '`' : '';
+						$lines[] = "    {$t['at']} `{$tt}` by `{$te}`{$tn}";
+					}
+				}
+				if (!empty($data['ivr_legs'])) {
+					$lines[] = "  **IVR legs** (" . count($data['ivr_legs']) . "):";
+					foreach ($data['ivr_legs'] as $l) {
+						$app = $this->sanitizeForChat($l['app']);
+						$d = $l['duration_seconds'] !== null ? "{$l['duration_seconds']}s" : '?';
+						$lines[] = "    `{$app}` · {$d}";
+					}
+				}
+				if (!empty($data['park_events'])) $lines[] = "  Park events: " . count($data['park_events']);
+				if (!empty($data['pickup_events'])) $lines[] = "  Pickup events: " . count($data['pickup_events']);
+				return implode("\n", $lines);
+
+			case 'fm_cel_transfers':
+				if (empty($data['rows'])) return "No transfer events in the window.";
+				$sum = $data['summary'] ?? [];
+				$lines = ["**Transfers** ({$data['count']}) — blind: " . ($sum['blind'] ?? 0) . " · attended: " . ($sum['attended'] ?? 0)];
+				foreach (array_slice($data['rows'], 0, 20) as $r) {
+					$tt = $this->sanitizeForChat($r['type']);
+					$te = $this->sanitizeForChat($r['transferer']['ext'] ?? '');
+					$tn = $r['transferer']['name'] !== '' ? ' `' . $this->sanitizeForChat($r['transferer']['name']) . '`' : '';
+					$rawLid = (string)($r['linkedid'] ?? '');
+					$lidPart = (preg_match('/^\d+\.\d+$/', $rawLid) === 1)
+						? " · {{cmd:show call timeline {$rawLid}|timeline}}"
+						: " · `" . $this->sanitizeForChat($rawLid) . "`";
+					$dur = $r['call_duration_before_transfer_s'] !== null ? " · after {$r['call_duration_before_transfer_s']}s" : '';
+					$lines[] = "  {$r['at']} `{$tt}` by `{$te}`{$tn}{$dur}{$lidPart}";
+				}
+				if (count($data['rows']) > 20) $lines[] = "  ... " . (count($data['rows']) - 20) . " more";
+				return implode("\n", $lines);
+
+			case 'fm_get_queue_log':
+				if (empty($data['rows'])) {
+					$note = !empty($data['note']) ? "\n_{$data['note']}_" : '';
+					return "No queue log events in the window.{$note}";
+				}
+				$lines = ["**Queue log** ({$data['count']} events):"];
+				$ec = $data['event_counts'] ?? [];
+				if (!empty($ec)) {
+					$summary = [];
+					foreach ($ec as $type => $n) { $summary[] = "`" . $this->sanitizeForChat($type) . "`:{$n}"; }
+					$lines[] = "  " . implode(' · ', array_slice($summary, 0, 10));
+				}
+				foreach (array_slice($data['rows'], 0, 15) as $r) {
+					$ev = $this->sanitizeForChat($r['event']);
+					$qn = $this->sanitizeForChat($r['queuename']);
+					$ag = $this->sanitizeForChat($r['agent']);
+					$lines[] = "  {$r['time']} q=`{$qn}` `{$ev}` agent=`{$ag}`";
+				}
+				if (count($data['rows']) > 15) $lines[] = "  ... " . (count($data['rows']) - 15) . " more";
+				return implode("\n", $lines);
+
+			case 'fm_queue_metrics':
+				if (empty($data['rows'])) {
+					$note = !empty($data['note']) ? "\n_{$data['note']}_" : '';
+					return "No queue activity in the window.{$note}";
+				}
+				$slT = (int)$data['service_level_threshold_seconds'];
+				$lines = ["**Queue metrics** — SL threshold {$slT}s · {$data['summary']['total_offered']} offered, {$data['summary']['total_answered']} answered, {$data['summary']['total_abandoned']} abandoned"];
+				foreach ($data['rows'] as $q) {
+					$qq = $this->sanitizeForChat($q['queue']);
+					$qn = $q['name'] !== '' ? ' `' . $this->sanitizeForChat($q['name']) . '`' : '';
+					$lines[] = "  **Queue `{$qq}`**{$qn}";
+					$lines[] = "    Offered: {$q['offered']} · Answered: {$q['answered']} · Abandoned: {$q['abandoned']} ({$q['abandonment_rate_display']})";
+					$lines[] = "    SL: {$q['service_level_display']} · ASA: {$q['asa_display']} · AHT: {$q['aht_display']} · Talk: {$q['talk_time_display']}";
+					if ($q['longest_wait_answered_seconds'] > 0) {
+						$lines[] = "    Longest wait — answered: {$q['longest_wait_answered_seconds']}s · abandoned: {$q['longest_wait_abandoned_seconds']}s";
+					}
+				}
+				return implode("\n", $lines);
+
+			case 'fm_agent_metrics':
+				if (empty($data['rows'])) {
+					$note = !empty($data['note']) ? "\n_{$data['note']}_" : '';
+					return "No agent activity in the window.{$note}";
+				}
+				$lines = ["**Agent metrics** ({$data['count']} agents):"];
+				foreach ($data['rows'] as $a) {
+					$ext = $this->sanitizeForChat((string)($a['agent']['ext'] ?? ''));
+					$nm  = ($a['agent']['name'] ?? '') !== '' ? ' `' . $this->sanitizeForChat($a['agent']['name']) . '`' : '';
+					$qs = array_map(function($q) { return $this->sanitizeForChat($q); }, $a['queues']);
+					$queueList = !empty($qs) ? ' on `' . implode('`,`', $qs) . '`' : '';
+					$lines[] = "  **`{$ext}`**{$nm}{$queueList}";
+					$lines[] = "    Calls: {$a['calls_handled']} · Talk: {$a['talk_time_display']} · RNA: {$a['ring_no_answer_count']} · Occupancy: {$a['occupancy_display']}";
+					$lines[] = "    Session: {$a['session_time_display']} · Available: {$a['available_time_display']} · Paused: {$a['total_pause_display']}";
+					if (!empty($a['pauses'])) {
+						$pauseStr = [];
+						foreach (array_slice($a['pauses'], 0, 4) as $p) {
+							$reason = $this->sanitizeForChat($p['reason']);
+							$pauseStr[] = "`{$reason}`:{$p['display']} ({$p['count']}x)";
+						}
+						$lines[] = "    Pause breakdown: " . implode(' · ', $pauseStr);
+					}
+				}
+				return implode("\n", $lines);
+
+			case 'fm_queue_wallboard':
+				$qs = $data['queues'] ?? [];
+				if (empty($qs)) return "**Wallboard** — no queues configured.";
+				$sum = $data['summary'] ?? [];
+				$lines = ["**Wallboard** — {$sum['total_waiting']} waiting · {$sum['agents_available']} avail · {$sum['agents_on_call']} on call · {$sum['agents_paused']} paused"];
+				foreach ($qs as $q) {
+					$qe = $this->sanitizeForChat($q['queue']);
+					$qn = $q['name'] !== '' ? ' `' . $this->sanitizeForChat($q['name']) . '`' : '';
+					$lines[] = "  **`{$qe}`**{$qn} — {$q['callers_waiting']} waiting · longest {$q['longest_current_wait_display']}";
+					$av = count($q['agents']['available']);
+					$oc = count($q['agents']['on_call']);
+					$pa = count($q['agents']['paused']);
+					$lines[] = "    Agents: {$av} avail · {$oc} on call · {$pa} paused";
+					foreach ($q['agents']['on_call'] as $a) {
+						$ax = $this->sanitizeForChat((string)($a['ext'] ?? ''));
+						$an = ($a['name'] ?? '') !== '' ? ' `' . $this->sanitizeForChat($a['name']) . '`' : '';
+						$lines[] = "      📞 `{$ax}`{$an} (on call)";
+					}
+					foreach ($q['agents']['paused'] as $a) {
+						$ax = $this->sanitizeForChat((string)($a['ext'] ?? ''));
+						$an = ($a['name'] ?? '') !== '' ? ' `' . $this->sanitizeForChat($a['name']) . '`' : '';
+						$reason = $this->sanitizeForChat($a['reason'] ?? 'unspecified');
+						$lines[] = "      ⏸ `{$ax}`{$an} (paused: `{$reason}`)";
+					}
+					foreach ($q['agents']['available'] as $a) {
+						$ax = $this->sanitizeForChat((string)($a['ext'] ?? ''));
+						$an = ($a['name'] ?? '') !== '' ? ' `' . $this->sanitizeForChat($a['name']) . '`' : '';
+						$lines[] = "      ✓ `{$ax}`{$an} (available)";
+					}
+					foreach ($q['callers'] ?? [] as $c) {
+						$cid = $this->sanitizeForChat($c['caller_id']);
+						$lines[] = "      ⏱ caller `{$cid}` waiting {$c['wait_display']}";
+					}
 				}
 				return implode("\n", $lines);
 

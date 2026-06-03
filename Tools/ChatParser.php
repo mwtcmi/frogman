@@ -384,6 +384,87 @@ class ChatParser {
 		return null;
 	}
 
+	/**
+	 * Parse a trailing time clause off the end of a reporting chat command and
+	 * return ['date_from'=>..., 'date_to'=>...] or []. Used by every reporting
+	 * anchor so the user can scope any report from chat without going through
+	 * MCP/CLI for date params.
+	 *
+	 * Accepted forms (case-insensitive):
+	 *   from <date> to <date>
+	 *   last N hour(s) / day(s) / week(s) / month(s)
+	 *   today / yesterday
+	 *   this week / last week
+	 *   this month / last month
+	 *
+	 * <date> is anything strtotime() understands (ISO 8601, "2026-05-29",
+	 * "May 29 2026", etc.). Unrecognized clauses return [] so the tool's
+	 * own applyDefaultReportWindow() default kicks in — never throw, never
+	 * fail the parse.
+	 */
+	private static function parseTimeClause($clause) {
+		$clause = trim((string)$clause);
+		if ($clause === '') return [];
+		$now = time();
+		if (preg_match('/^from\s+(.+?)\s+to\s+(.+)$/i', $clause, $m)) {
+			$from = strtotime($m[1]);
+			$to = strtotime($m[2]);
+			if ($from !== false && $to !== false) {
+				return [
+					'date_from' => date('Y-m-d H:i:s', $from),
+					'date_to'   => date('Y-m-d H:i:s', $to),
+				];
+			}
+		}
+		if (preg_match('/^last\s+(\d+)\s+(hour|day|week|month)s?$/i', $clause, $m)) {
+			$n = (int)$m[1];
+			$secs = ['hour' => 3600, 'day' => 86400, 'week' => 604800, 'month' => 2592000];
+			$unit = strtolower($m[2]);
+			return [
+				'date_from' => date('Y-m-d H:i:s', $now - $n * $secs[$unit]),
+				'date_to'   => date('Y-m-d H:i:s', $now),
+			];
+		}
+		if (preg_match('/^today$/i', $clause)) {
+			return [
+				'date_from' => date('Y-m-d 00:00:00'),
+				'date_to'   => date('Y-m-d H:i:s'),
+			];
+		}
+		if (preg_match('/^yesterday$/i', $clause)) {
+			$y = strtotime('yesterday');
+			return [
+				'date_from' => date('Y-m-d 00:00:00', $y),
+				'date_to'   => date('Y-m-d 23:59:59', $y),
+			];
+		}
+		if (preg_match('/^this\s+week$/i', $clause)) {
+			return [
+				'date_from' => date('Y-m-d 00:00:00', strtotime('monday this week')),
+				'date_to'   => date('Y-m-d H:i:s'),
+			];
+		}
+		if (preg_match('/^last\s+week$/i', $clause)) {
+			return [
+				'date_from' => date('Y-m-d 00:00:00', strtotime('monday last week')),
+				'date_to'   => date('Y-m-d 23:59:59', strtotime('sunday last week')),
+			];
+		}
+		if (preg_match('/^this\s+month$/i', $clause)) {
+			return [
+				'date_from' => date('Y-m-01 00:00:00'),
+				'date_to'   => date('Y-m-d H:i:s'),
+			];
+		}
+		if (preg_match('/^last\s+month$/i', $clause)) {
+			return [
+				'date_from' => date('Y-m-01 00:00:00', strtotime('first day of last month')),
+				'date_to'   => date('Y-m-t 23:59:59', strtotime('first day of last month')),
+			];
+		}
+		return [];
+	}
+
 	public static function parse($message, $sessionId = 'default', $skipFuzzy = false) {
 		$msg = trim($message);
 		$lower = strtolower($msg);
@@ -497,14 +578,55 @@ class ChatParser {
 		}
 
 		// ── CDR Analytics ──
-		if (preg_match('/^(cdr\s+)?stats$/i', $lower)) {
-			return ['tool' => 'fm_get_cdr_stats', 'params' => []];
+		// Each anchor optionally accepts a trailing time clause (see parseTimeClause):
+		//   `cdr stats last 7 days`, `peak hours yesterday`, `busiest extensions this week`
+		if (preg_match('/^(?:cdr\s+)?stats(?:\s+(.+))?$/i', $lower, $m)) {
+			$params = self::parseTimeClause($m[1] ?? '');
+			return ['tool' => 'fm_get_cdr_stats', 'params' => $params];
 		}
-		if (preg_match('/^(busiest|top)\s+(ext|extensions?)$/i', $lower)) {
-			return ['tool' => 'fm_get_busiest_extensions', 'params' => []];
+		if (preg_match('/^(?:busiest|top)\s+(?:ext|extensions?)(?:\s+(.+))?$/i', $lower, $m)) {
+			$params = self::parseTimeClause($m[1] ?? '');
+			return ['tool' => 'fm_get_busiest_extensions', 'params' => $params];
 		}
-		if (preg_match('/^peak\s+hours?$/i', $lower)) {
-			return ['tool' => 'fm_get_peak_hours', 'params' => []];
+		if (preg_match('/^peak\s+hours?(?:\s+(.+))?$/i', $lower, $m)) {
+			$params = self::parseTimeClause($m[1] ?? '');
+			return ['tool' => 'fm_get_peak_hours', 'params' => $params];
+		}
+
+		// ── Call Reporting (CEL + queue analytics) ──
+		// CEL primitives. Linkedid format is "<epoch>.<seq>" so it has a dot in it.
+		if (preg_match('/^(?:show\s+)?call\s+timeline\s+(\S+)$/i', $msg, $m)) {
+			return ['tool' => 'fm_call_timeline', 'params' => ['linkedid' => $m[1]]];
+		}
+		if (preg_match('/^show\s+cel(?:\s+events)?(?:\s+(.+))?$/i', $lower, $m)) {
+			$params = self::parseTimeClause($m[1] ?? '');
+			return ['tool' => 'fm_get_cel', 'params' => $params];
+		}
+		if (preg_match('/^list\s+transfers?(?:\s+(.+))?$/i', $lower, $m)) {
+			$params = self::parseTimeClause($m[1] ?? '');
+			return ['tool' => 'fm_cel_transfers', 'params' => $params];
+		}
+		// Queue analytics. "queue metrics" / "queue metrics 5001" / "queue metrics for 5001 last 7 days"
+		if (preg_match('/^queue\s+metrics(?:\s+(?:for\s+)?(\d+))?(?:\s+(.+))?$/i', $msg, $m)) {
+			$params = self::parseTimeClause($m[2] ?? '');
+			if (!empty($m[1])) $params['queue'] = $m[1];
+			return ['tool' => 'fm_queue_metrics', 'params' => $params];
+		}
+		if (preg_match('/^agent\s+metrics\s+(\d+)(?:\s+(.+))?$/i', $msg, $m)) {
+			$params = self::parseTimeClause($m[2] ?? '');
+			$params['agent'] = $m[1];
+			return ['tool' => 'fm_agent_metrics', 'params' => $params];
+		}
+		if (preg_match('/^agent\s+metrics(?:\s+(.+))?$/i', $lower, $m)) {
+			$params = self::parseTimeClause($m[1] ?? '');
+			return ['tool' => 'fm_agent_metrics', 'params' => $params];
+		}
+		if (preg_match('/^(?:queue\s+)?wallboard$/i', $lower)) {
+			return ['tool' => 'fm_queue_wallboard', 'params' => []];
+		}
+		if (preg_match('/^show\s+queue\s+log(?:\s+(.+))?$/i', $lower, $m)) {
+			$params = self::parseTimeClause($m[1] ?? '');
+			return ['tool' => 'fm_get_queue_log', 'params' => $params];
 		}
 		// DID destination map — Mermaid flowchart LR of every DID and where it terminates.
 		// Optional "filter X" (DID/description match) and "to Y" (destination match).
@@ -640,14 +762,16 @@ class ChatParser {
 		if (preg_match('/^(show\s+)?(active\s+)?calls$|^who.s\s+(on\s+)?(the\s+)?phone/i', $lower)) {
 			return ['tool' => 'fm_list_active_calls', 'params' => []];
 		}
-		if (preg_match('/^(show\s+|get\s+)?(cdr|call\s+(log|history|records?))(\s+(\d+))?$/i', $msg, $m)) {
-			$params = [];
-			if (!empty($m[5])) $params['limit'] = (int) $m[5];
+		if (preg_match('/^(?:show\s+|get\s+)?(?:cdr|call\s+(?:log|history|records?))(?:\s+(\d+))?(?:\s+(.+))?$/i', $msg, $m)) {
+			$params = self::parseTimeClause($m[2] ?? '');
+			if (!empty($m[1])) $params['limit'] = (int) $m[1];
 			return ['tool' => 'fm_get_cdr', 'params' => $params];
 		}
-		if (preg_match('/^(calls?|cdr)\s+(from|for|to)\s+(\d+)$/i', $msg, $m)) {
-			$key = strtolower($m[2]) === 'to' ? 'dst' : 'src';
-			return ['tool' => 'fm_get_cdr', 'params' => [$key => $m[3]]];
+		if (preg_match('/^(?:calls?|cdr)\s+(from|for|to)\s+(\d+)(?:\s+(.+))?$/i', $msg, $m)) {
+			$key = strtolower($m[1]) === 'to' ? 'dst' : 'src';
+			$params = self::parseTimeClause($m[3] ?? '');
+			$params[$key] = $m[2];
+			return ['tool' => 'fm_get_cdr', 'params' => $params];
 		}
 
 		// ── Trunks ──
@@ -2047,6 +2171,21 @@ class ChatParser {
   `cdr stats` — call totals (today, week, month, top callers, top destinations)
   `peak hours` — busiest hours of the day from CDR
   `busiest extensions` / `top extensions` — extensions with most calls
+
+**Call Reporting (CEL + Queue Analytics):**
+  `show cel events` — raw Channel Event Log (transfers, bridges, IVR, park)
+  `show call timeline <linkedid>` — reconstruct one call from CEL (channels, bridges, transfers, IVR legs)
+  `list transfers` — blind + attended transfers in a window
+  `show queue log` — raw queue events (offered, answered, abandoned, pause/unpause)
+  `queue metrics` / `queue metrics <queue>` — offered, answered, abandoned, SL, ASA, AHT per queue
+  `agent metrics <ext>` — per-agent scorecard (calls handled, talk/pause time, occupancy)
+  `queue wallboard` — live per-queue snapshot (callers waiting, agents available/on-call/paused)
+
+  Append a time window to any reporting command (default is today):
+    `... yesterday` / `today`
+    `... this week` / `last week` / `this month` / `last month`
+    `... last 7 days` / `last 4 hours` / `last 2 months`
+    `... from 2026-05-29 to 2026-05-30`
 
 **Search & Export:**
   `search <query>` / `find <query>` / `where is <query>` / `who is <query>`

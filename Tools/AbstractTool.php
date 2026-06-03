@@ -107,6 +107,177 @@ abstract class AbstractTool {
 		return (bool) preg_match('#^(Message|AsyncGoto)/#i', $lineOrName);
 	}
 
+	// Cache for isInternalExtension(). Per-request hashset of every configured
+	// extension number. Lazily populated on first lookup; subsequent calls O(1).
+	private static $_extensionSet = null;
+
+	/**
+	 * True if $number is a configured FreePBX extension.
+	 *
+	 * Resolves against the canonical users table (same source as
+	 * describeDestination's name lookup). Caller IDs from the PSTN happen to be
+	 * digit strings too, so a regex test alone is not enough — this is what
+	 * fm_get_busiest_extensions needs to stop labeling inbound PSTN numbers as
+	 * extensions.
+	 */
+	protected function isInternalExtension($number) {
+		if ($number === null || $number === '') return false;
+		$num = (string)$number;
+		if (!preg_match('/^\d+$/', $num)) return false;
+		$this->ensureExtensionSet();
+		return isset(self::$_extensionSet[$num]);
+	}
+
+	/**
+	 * Return all configured extension numbers as a list of strings.
+	 * Shares the same per-request cache as isInternalExtension(). Useful for
+	 * building IN-clauses on CDR/CEL/queue_log queries so we filter at the SQL
+	 * boundary rather than scanning the full table.
+	 */
+	protected function getInternalExtensions() {
+		$this->ensureExtensionSet();
+		return array_keys(self::$_extensionSet);
+	}
+
+	/**
+	 * Lookup table mapping extension number → display name. Same cache shape as
+	 * the extension set, populated alongside it. Returns '' when the extension
+	 * is unknown (e.g. agent on a since-deleted extension shows up in queue_log).
+	 *
+	 * Named lookupExtensionName (not getExtensionName) so it doesn't collide
+	 * with TraceCallFlow's private getExtensionName($ext, $db) — PHP refuses
+	 * to let a child make an inherited method stricter than the parent.
+	 */
+	protected function lookupExtensionName($number) {
+		$this->ensureExtensionSet();
+		return self::$_extensionNames[(string)$number] ?? '';
+	}
+
+	private static $_extensionNames = [];
+
+	private function ensureExtensionSet() {
+		if (self::$_extensionSet !== null) return;
+		self::$_extensionSet = [];
+		try {
+			$db = $this->freepbx->Database;
+			$sth = $db->query("SELECT extension, name FROM users");
+			foreach ($sth->fetchAll(\PDO::FETCH_ASSOC) as $row) {
+				$ext = (string)$row['extension'];
+				self::$_extensionSet[$ext] = true;
+				self::$_extensionNames[$ext] = (string)($row['name'] ?? '');
+			}
+		} catch (\Throwable $e) {
+			// On lookup failure, treat as empty rather than spinning per-row retries.
+		}
+	}
+
+	/**
+	 * Collapse multi-leg CDR/CEL rows into one row per logical call.
+	 *
+	 * Asterisk emits 2–3 rows per real call when Local/...;1 + Local/...;2
+	 * fan-out is involved. linkedid ties every leg of one conversation together;
+	 * when linkedid is absent (very old rows), fall back to the uniqueid root
+	 * (everything before the first dot). Keeps the FIRST row seen for each key,
+	 * which for time-ordered queries is the master leg.
+	 *
+	 * Returns a re-indexed array (numeric keys) so downstream iteration is safe.
+	 */
+	protected function dedupeByCall(array $rows) {
+		$seen = [];
+		$out = [];
+		foreach ($rows as $r) {
+			$key = '';
+			if (!empty($r['linkedid'])) {
+				$key = (string)$r['linkedid'];
+			} elseif (!empty($r['uniqueid'])) {
+				$key = (string)$r['uniqueid'];
+				$dot = strpos($key, '.');
+				if ($dot !== false) $key = substr($key, 0, $dot);
+			} else {
+				// No identity to dedupe on — preserve the row, can't merge it.
+				$out[] = $r;
+				continue;
+			}
+			if (isset($seen[$key])) continue;
+			$seen[$key] = true;
+			$out[] = $r;
+		}
+		return $out;
+	}
+
+	/**
+	 * True if a CDR/CEL row represents a real human call (the kind reporting cares
+	 * about). False for paging multicast, lockdown beacons, echo tests, and the
+	 * other system-traffic contexts that pollute call-volume metrics.
+	 *
+	 * Checks across the column names CDR and CEL both use, so the same helper
+	 * works for either source without the caller adapting. Pass extra patterns
+	 * via $denyContexts to layer in deployment-specific noise.
+	 *
+	 * Patterns are regex fragments (no anchors needed — added here).
+	 */
+	/**
+	 * Apply the locked default reporting window when neither date_from nor
+	 * date_to is supplied: today 00:00 → now. Used by every CEL/queuelog
+	 * reporting tool so unbounded queries can't accidentally scan a
+	 * year-of-rows table. Callers who pass even one bound opt out — they know
+	 * what they want.
+	 */
+	protected function applyDefaultReportWindow(array $params) {
+		if (empty($params['date_from']) && empty($params['date_to'])) {
+			$params['date_from'] = date('Y-m-d 00:00:00');
+			$params['date_to']   = date('Y-m-d H:i:s');
+		}
+		return $params;
+	}
+
+	/**
+	 * True if a value looks like a real Asterisk linkedid: "<digits>.<digits>".
+	 * Used by chat formatters before embedding linkedid inside a {{cmd:...}}
+	 * chip — sanitizeForChat() strips backticks/{{/[ but does not neutralize
+	 * the chip's own }} and | delimiters, so an unvalidated value could break
+	 * out of the chip template. Defense in depth; current Asterisk source
+	 * always emits this format.
+	 */
+	protected function isSafeLinkedid($v) {
+		return is_string($v) && preg_match('/^\d+\.\d+$/', $v) === 1;
+	}
+
+	protected function isRealCall(array $row, array $denyContexts = []) {
+		static $defaults = [
+			'context_re' => [
+				'^fm-lockdown-',
+				'^app-echo-test$',
+				'^app-blackhole$',
+			],
+			'dst_re' => [
+				'^\*43$',  // echo test feature code
+			],
+			'channel_re' => [
+				'^MulticastRTP/',
+				'^Message/',
+			],
+		];
+		$ctx = (string)($row['dcontext'] ?? $row['context'] ?? '');
+		$dst = (string)($row['dst'] ?? $row['exten'] ?? '');
+		$ch  = (string)($row['channel']  ?? $row['channame'] ?? '');
+		$dch = (string)($row['dstchannel'] ?? $row['peer'] ?? '');
+		foreach ($defaults['context_re'] as $re) {
+			if (preg_match('#' . $re . '#i', $ctx)) return false;
+		}
+		foreach ($defaults['dst_re'] as $re) {
+			if (preg_match('#' . $re . '#i', $dst)) return false;
+		}
+		foreach ($defaults['channel_re'] as $re) {
+			if ($ch  !== '' && preg_match('#' . $re . '#i', $ch))  return false;
+			if ($dch !== '' && preg_match('#' . $re . '#i', $dch)) return false;
+		}
+		foreach ($denyContexts as $re) {
+			if (preg_match('#' . $re . '#i', $ctx)) return false;
+		}
+		return true;
+	}
+
 	/**
 	 * Cryptographically-secure shuffle (Fisher-Yates with random_int).
 	 *

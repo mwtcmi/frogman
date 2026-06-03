@@ -10,7 +10,7 @@ class GetCdr extends AbstractTool {
 	}
 
 	public function description() {
-		return 'Query call detail records. Filters: src, dst, date_from, date_to, disposition (ANSWERED/NO ANSWER/BUSY/FAILED), limit (default 25, max 100).';
+		return 'Query call detail records. Filters: src, dst, date_from, date_to, disposition (ANSWERED/NO ANSWER/BUSY/FAILED), limit (default 25, max 100), include_non_calls (default false — exclude multicast paging, lockdown beacons, echo tests).';
 	}
 
 	public function validate($params) {
@@ -26,11 +26,14 @@ class GetCdr extends AbstractTool {
 		return true;
 	}
 
+	public function permissionLevel() { return self::PERM_READ; }
+
 	public function requiredPermission() {
 		return null;
 	}
 
 	public function execute($params, $context) {
+		$params = $this->applyDefaultReportWindow($params);
 		$conditions = [];
 		$binds = [];
 
@@ -57,21 +60,34 @@ class GetCdr extends AbstractTool {
 
 		$where = !empty($conditions) ? 'WHERE ' . implode(' AND ', $conditions) : '';
 		$limit = isset($params['limit']) ? min((int) $params['limit'], 100) : 25;
+		$includeNonCalls = !empty($params['include_non_calls']);
+
+		// Overfetch so the post-filter still hits the user's requested limit.
+		// Cap defensively so a pathological window can't blow memory.
+		$fetchLimit = $includeNonCalls ? $limit : min($limit * 10, 5000);
 
 		$sql = "SELECT calldate, clid, src, dst, dcontext, channel, dstchannel,
-		               disposition, duration, billsec, uniqueid, did, recordingfile
+		               disposition, duration, billsec, uniqueid, linkedid, did, recordingfile
 		        FROM asteriskcdrdb.cdr
 		        {$where}
 		        ORDER BY calldate DESC
-		        LIMIT {$limit}";
+		        LIMIT {$fetchLimit}";
 
 		$db = $this->freepbx->Database;
 		$sth = $db->prepare($sql);
 		$sth->execute($binds);
 		$rows = $sth->fetchAll(\PDO::FETCH_ASSOC);
 
+		if (!$includeNonCalls) {
+			$rows = array_values(array_filter($rows, function($r) { return $this->isRealCall($r); }));
+		}
+		if (count($rows) > $limit) {
+			$rows = array_slice($rows, 0, $limit);
+		}
+
 		return [
 			'count' => count($rows),
+			'include_non_calls' => $includeNonCalls,
 			'records' => $rows,
 		];
 	}
