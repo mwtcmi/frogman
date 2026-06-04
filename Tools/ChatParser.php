@@ -1088,6 +1088,48 @@ class ChatParser {
 		if (preg_match('/^(show|get)\s+queue\s+(\d+)$/i', $msg, $m)) {
 			return ['tool' => 'fm_get_queue', 'params' => ['id' => $m[2]]];
 		}
+		// Create: "add queue 800 named Support" / "create queue 800 Support"
+		if (preg_match('/^(?:add|create)\s+queue\s+(\d+)(?:\s+(?:named\s+|called\s+))?\s*(.+)$/i', $msg, $m)) {
+			$params = ['account' => $m[1], 'name' => trim($m[2])];
+			self::setPending($sessionId, 'fm_add_queue', $params);
+			return ['tool' => 'fm_add_queue', 'params' => $params];
+		}
+		// Delete: "remove queue 800" / "delete queue 800"
+		if (preg_match('/^(?:remove|delete)\s+queue\s+(\d+)$/i', $msg, $m)) {
+			$params = ['account' => $m[1]];
+			self::setPending($sessionId, 'fm_remove_queue', $params);
+			return ['tool' => 'fm_remove_queue', 'params' => $params];
+		}
+		// Rename: "rename queue 800 to Sales"
+		if (preg_match('/^rename\s+queue\s+(\d+)\s+to\s+(.+)$/i', $msg, $m)) {
+			$params = ['account' => $m[1], 'name' => trim($m[2])];
+			self::setPending($sessionId, 'fm_update_queue', $params);
+			return ['tool' => 'fm_update_queue', 'params' => $params];
+		}
+		// Single-field updates: strategy / timeout
+		if (preg_match('/^(?:set|update)\s+queue\s+(\d+)\s+strategy\s+(?:to\s+)?(ringall|leastrecent|fewestcalls|random|rrmemory|linear|wrandom)$/i', $msg, $m)) {
+			$params = ['account' => $m[1], 'strategy' => strtolower($m[2])];
+			self::setPending($sessionId, 'fm_update_queue', $params);
+			return ['tool' => 'fm_update_queue', 'params' => $params];
+		}
+		if (preg_match('/^(?:set|update)\s+queue\s+(\d+)\s+timeout\s+(?:to\s+)?(\d+)$/i', $msg, $m)) {
+			$params = ['account' => $m[1], 'timeout' => (int)$m[2]];
+			self::setPending($sessionId, 'fm_update_queue', $params);
+			return ['tool' => 'fm_update_queue', 'params' => $params];
+		}
+		// Persistent member CRUD. Anchor uses the word "member" to disambiguate
+		// from the existing AMI-runtime `add <ext> to queue <q>` → fm_queue_add_agent.
+		if (preg_match('/^add\s+member\s+(\d+)\s+to\s+queue\s+(\d+)(?:\s+penalty\s+(\d+))?$/i', $msg, $m)) {
+			$params = ['ext' => $m[1], 'queue' => $m[2]];
+			if (!empty($m[3])) $params['penalty'] = (int)$m[3];
+			self::setPending($sessionId, 'fm_add_queue_member', $params);
+			return ['tool' => 'fm_add_queue_member', 'params' => $params];
+		}
+		if (preg_match('/^remove\s+member\s+(\d+)\s+from\s+queue\s+(\d+)$/i', $msg, $m)) {
+			$params = ['ext' => $m[1], 'queue' => $m[2]];
+			self::setPending($sessionId, 'fm_remove_queue_member', $params);
+			return ['tool' => 'fm_remove_queue_member', 'params' => $params];
+		}
 
 		// ── Time Conditions ──
 		if (preg_match('/^(list|show)\s+(all\s+)?time\s*conditions?$/i', $lower)) {
@@ -2209,6 +2251,13 @@ class ChatParser {
 
 **Queues:**
   `list queues` / `show queue <id>`
+  `add queue <num> named <name>` create
+  `rename queue <num> to <name>`
+  `set queue <num> strategy <ringall|leastrecent|fewestcalls|random|rrmemory|linear|wrandom>`
+  `set queue <num> timeout <seconds>`
+  `remove queue <num>` delete (refuses if other destinations point to it; pass force:true to override)
+  `add member <ext> to queue <num>` persistent member add (penalty optional)
+  `remove member <ext> from queue <num>` persistent member remove
 
 **Follow Me:**
   `set followme on <ext> to <numbers>`
