@@ -18,15 +18,16 @@ class ExtensionStateList extends AbstractTool {
 			// Only match extension hints (ext@ext-local), skip parking, feature codes, etc.
 			if (preg_match('/^(\d+)@ext-local\s+:\s+PJSIP\/\d+.*State:(\S+)\s+Presence:(\S+)/', $line, $m)) {
 				$state = $m[2];
-				$stateLabel = match($state) {
+				// PHP 7.4-compatible lookup (FreePBX 16 ships PHP 7.4; match() is 8.0+).
+				$stateMap = [
 					'Idle' => 'Available',
 					'InUse' => 'On a call',
 					'Ringing' => 'Ringing',
 					'Unavailable' => 'Offline',
 					'Busy' => 'Busy',
 					'OnHold' => 'On Hold',
-					default => $state,
-				};
+				];
+				$stateLabel = $stateMap[$state] ?? $state;
 				$extensions[] = [
 					'ext' => $m[1],
 					'state' => $stateLabel,

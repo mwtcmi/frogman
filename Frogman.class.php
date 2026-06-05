@@ -2357,14 +2357,15 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 				if (empty($data['extensions'])) return "No extensions found.";
 				$lines = ["**Extension States** ({$data['count']}):"];
 				foreach ($data['extensions'] as $e) {
-					$icon = match($e['state']) {
+					// PHP 7.4-compatible lookup (FreePBX 16 ships PHP 7.4; match() is 8.0+).
+					$iconMap = [
 						'Available' => '🟢',
 						'On a call' => '🔴',
 						'Ringing' => '🟡',
 						'Busy' => '🔴',
 						'On Hold' => '🟠',
-						default => '⚪',
-					};
+					];
+					$icon = $iconMap[$e['state']] ?? '⚪';
 					$lines[] = "  {$icon} {{cmd:diagnose ext {$e['ext']}|{$e['ext']}}} — {$e['state']}";
 				}
 				return implode("\n", $lines);
