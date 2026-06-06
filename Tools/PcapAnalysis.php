@@ -1698,6 +1698,7 @@ class PcapAnalysis extends AbstractTool {
 			'summary_action' => $params['summary_action'],
 			'section' => $params['section'],
 			'item_id' => $params['item_id'],
+			'call_id' => $params['call_id'] ?? null,
 			'call_index' => isset($params['call_index']) ? (int)$params['call_index'] : null,
 			'call_ref' => $params['call_ref'] ?? null,
 			'confidence' => $item['confidence'] ?? null,
@@ -1705,6 +1706,7 @@ class PcapAnalysis extends AbstractTool {
 			'observations' => $item['observations'] ?? [],
 			'evidence_refs' => $item['evidence_refs'] ?? ($item['evidence'] ?? []),
 			'result' => $this->summaryActionResult($params['summary_action'], $item),
+			'available_actions' => $this->summaryActionAvailability($item, $params['summary_action']),
 		];
 	}
 
@@ -1761,6 +1763,15 @@ class PcapAnalysis extends AbstractTool {
 			'items' => array_values($item['evidence_text'] ?? []),
 			'refs' => array_values($item['evidence_refs'] ?? ($item['evidence'] ?? [])),
 		];
+	}
+
+	private function summaryActionAvailability($item, $currentAction) {
+		$actions = [];
+		if (!empty($item['simplified'])) $actions['simplify'] = 'Simplify';
+		if (!empty($item['re_explained'])) $actions['re_explain'] = 'Re-Explain';
+		if (!empty($item['evidence_text']) && is_array($item['evidence_text'])) $actions['show_evidence'] = 'Show Evidence';
+		unset($actions[$currentAction]);
+		return $actions;
 	}
 
 	private function callRef($callId) {

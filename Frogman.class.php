@@ -336,6 +336,42 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 		if (!empty($actions)) $lines[] = "{$indent}Actions: " . implode(' · ', $actions);
 	}
 
+	private function appendPcapActionViewActions(&$lines, $data, $indent = '') {
+		$available = $data['available_actions'] ?? [];
+		if (empty($available) || !is_array($available)) return;
+		$section = $data['section'] ?? null;
+		$id = $data['item_id'] ?? null;
+		$path = $data['path'] ?? null;
+		if (!is_string($section) || !preg_match('/^[a-z0-9_]+$/i', $section)) return;
+		if (!is_string($id) || !preg_match('/^[a-z0-9_:-]+$/i', $id)) return;
+		if (!is_string($path) || $path === '') return;
+
+		$target = "{$section} {$id}";
+		if (!empty($data['call_ref']) && preg_match('/^[a-f0-9]{12}$/i', (string)$data['call_ref'])) {
+			$target .= " call " . strtolower((string)$data['call_ref']);
+		} elseif (isset($data['call_index']) && $data['call_index'] !== null && (int)$data['call_index'] >= 0) {
+			$target .= " call " . (int)$data['call_index'];
+		}
+		$target .= " path " . $this->pcapCommandValue($path);
+		if (!empty($data['call_id']) && is_string($data['call_id'])) {
+			$target .= " call_id " . $this->pcapCommandValue($data['call_id']);
+		}
+
+		$commandNames = [
+			'simplify' => 'simplify',
+			're_explain' => 're-explain',
+			'show_evidence' => 'evidence',
+		];
+		$actions = [];
+		foreach ($available as $action => $label) {
+			if (empty($commandNames[$action])) continue;
+			$label = $this->sanitizeForChat($label);
+			if ($label === '') continue;
+			$actions[] = "{{cmd:pcap action {$commandNames[$action]} {$target}|{$label}}}";
+		}
+		if (!empty($actions)) $lines[] = "{$indent}Actions: " . implode(' · ', $actions);
+	}
+
 	private function pcapCallRef($callId) {
 		$callId = (string)$callId;
 		return $callId === '' ? null : substr(sha1($callId), 0, 12);
@@ -1769,16 +1805,13 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 						}
 						if (!empty($result['refs'])) {
 							$refs = array_map([$this, 'sanitizeForChat'], array_slice($result['refs'], 0, 8));
-							$lines[] = "Refs: `" . implode('` `', $refs) . "`";
+							$lines[] = "Internal refs: `" . implode('` `', $refs) . "`";
 						}
 					} else {
 						$text = $this->sanitizeForChat($result['text'] ?? '');
 						$lines[] = $text !== '' ? $text : 'No follow-up text is available for this item.';
-						if (!empty($data['evidence_refs'])) {
-							$refs = array_map([$this, 'sanitizeForChat'], array_slice($data['evidence_refs'], 0, 6));
-							$lines[] = "Refs: `" . implode('` `', $refs) . "`";
-						}
 					}
+					$this->appendPcapActionViewActions($lines, $data);
 					return implode("\n", $lines);
 				}
 				if (!empty($data['unsupported'])) {
