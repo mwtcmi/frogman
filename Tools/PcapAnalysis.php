@@ -1975,10 +1975,10 @@ class PcapAnalysis extends AbstractTool {
 	}
 
 	private function postSummaryEvidenceText($id, $line, $calls = [], $rtpSummary = null) {
+		$scopeEvidence = $this->postSummaryScopeEvidenceText($id);
+		if (!empty($scopeEvidence)) return $scopeEvidence;
+
 		$text = [];
-		if (!empty($line['evidence'])) {
-			$text[] = 'Evidence refs: ' . implode(', ', array_values($line['evidence']));
-		}
 		$call = $this->representativeCallForSummaryId($id, $calls);
 		if ($call !== null) {
 			foreach ($this->compactCallEvidence($call, $id) as $evidence) {
@@ -1995,6 +1995,48 @@ class PcapAnalysis extends AbstractTool {
 			}
 		}
 		return array_values(array_unique($text));
+	}
+
+	private function postSummaryScopeEvidenceText($id) {
+		$map = [
+			'rtp_capture_point_scope' => [
+				'RTP status counts were derived only from RTP or RTCP packets visible in this capture.',
+				'Off-capture media paths, including direct media, cannot be observed from this PCAP.',
+				'RTP conclusions are therefore limited to packets present at this capture point.',
+			],
+			'rtp_absence_not_proof' => [
+				'No matching RTP in this PCAP only means this capture point did not observe it.',
+				'Media can traverse another path, including direct media between endpoints.',
+				'Absence of RTP here is scope evidence, not proof that media never existed.',
+			],
+			'rtp_sequence_gap_estimate_scope' => [
+				'RTP sequence gaps are estimated only from packet sequence numbers visible in this capture.',
+				'The estimate cannot distinguish network packet loss from capture-point loss.',
+				'Interpret RTP gap conclusions as capture-scoped, not path-wide proof.',
+			],
+			'tcp_reassembly_scope' => [
+				'Some SIP over TCP content was recovered by simple stream reassembly.',
+				'Reassembled SIP messages are useful context, but carry lower confidence than complete packet-level messages.',
+				'Packet ordering, missing segments, or partial captures can limit this evidence.',
+			],
+			'unparsed_sip_scope' => [
+				'At least one SIP-like payload could not be parsed into a complete SIP message.',
+				'Decoded message counts and call grouping may therefore be incomplete.',
+				'The missing parse detail limits conclusions drawn from this capture.',
+			],
+			'evidence_scope' => [
+				'The analysis only uses packets decoded from this PCAP.',
+				'Signalling or media that bypassed this capture point cannot be observed here.',
+				'Conclusions are limited to the visible packet evidence.',
+			],
+			'insufficient_evidence' => [
+				'The decoded capture did not contain enough directly supporting observations to name a specific cause.',
+				'Missing signalling, missing media, or capture placement may be limiting the analysis.',
+				'Narrowing to a Call-ID or capturing closer to the endpoint/media path may provide stronger evidence.',
+			],
+		];
+		if (empty($map[$id])) return [];
+		return $map[$id];
 	}
 
 	private function representativeCallForSummaryId($id, $calls) {
