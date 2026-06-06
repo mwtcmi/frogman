@@ -26,7 +26,6 @@
 - [ ] **Job queue** — The `fm_jobs` table exists but nothing uses it. For long-running operations (backup, bulk extension creation), queue the job and poll for status.
 - [ ] **Admin page enhancements** — The admin page (`page.frogman.php`) is a stub. Add: audit log viewer, tool catalog browser, saved query manager, session list.
 - [ ] **i18n** — All user-facing strings should use `_()` for translation. Currently mostly done but not fully covered.
-- [ ] **Module signing** — Module shows as "Unsigned" in Module Admin. Investigate Sangoma's signing process or document how to suppress the warning.
 
 ## Known Issues
 
