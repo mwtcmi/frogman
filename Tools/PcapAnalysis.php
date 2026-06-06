@@ -27,7 +27,7 @@ class PcapAnalysis extends AbstractTool {
 		}
 		if (isset($params['summary_action'])) {
 			$allowedActions = ['simplify', 'explain', 'evidence', 're_explain', 'show_evidence'];
-			$allowedSections = ['support_summary', 'likely_next_checks', 'confidence_notes', 'diagnostic_hints'];
+			$allowedSections = ['response', 'support_summary', 'likely_next_checks', 'confidence_notes', 'diagnostic_hints'];
 			if (!in_array($this->normalizeSummaryAction($params['summary_action']), ['simplify', 'explain', 'evidence'], true)) {
 				return 'Parameter "summary_action" must be one of: ' . implode(', ', $allowedActions);
 			}
@@ -1771,6 +1771,9 @@ class PcapAnalysis extends AbstractTool {
 	}
 
 	private function findSummaryActionBlock($calls, $analysis, $section, $callIndex, $callRef) {
+		if ($section === 'response') {
+			return $this->responseSummaryActionItems($calls, $analysis);
+		}
 		if ($section === 'diagnostic_hints') {
 			if ($callRef !== null) {
 				$callRef = strtolower((string)$callRef);
@@ -1867,6 +1870,7 @@ class PcapAnalysis extends AbstractTool {
 
 	private function summaryBlockExplainText($section, $items) {
 		$intro = [
+			'response' => 'This explains the whole PCAP response that was displayed: aggregate counts, displayed call ladders, diagnostic hints, support summary, likely checks, and confidence limits. Omitted ladders are not treated as individually reviewed here.',
 			'diagnostic_hints' => 'These hints describe the notable observations for this call. They are confidence-scoped and should be read together, not as independent proof of a single cause.',
 			'support_summary' => 'This support summary combines the strongest decoded signalling and media observations. It preserves confidence levels because the capture point may not see every path.',
 			'likely_next_checks' => 'These checks are practical follow-ups suggested by the decoded evidence. They are prioritised by what the capture actually supports, while avoiding claims beyond this PCAP.',
@@ -1901,6 +1905,136 @@ class PcapAnalysis extends AbstractTool {
 		];
 		unset($actions[$currentAction]);
 		return $actions;
+	}
+
+	private function responseSummaryActionItems($calls, $analysis) {
+		$items = [];
+		$totalCalls = count($calls);
+		$displayedCalls = array_slice($calls, 0, 5);
+		$displayedCount = count($displayedCalls);
+		$outcomes = $this->formatCountMap($analysis['outcome_counts'] ?? []);
+		$observations = $this->formatCountMap($analysis['observation_counts'] ?? []);
+		$finalStatuses = $this->formatFinalStatusCounts($analysis['final_status_counts'] ?? []);
+		$transports = $this->formatCountMap($analysis['transport_counts'] ?? []);
+
+		$aggregateEvidence = [];
+		if ($outcomes !== '') $aggregateEvidence[] = 'Aggregate decoded outcomes: ' . $outcomes . '.';
+		if ($finalStatuses !== '') $aggregateEvidence[] = 'Final SIP status counts: ' . $finalStatuses . '.';
+		if ($observations !== '') $aggregateEvidence[] = 'Observation counts: ' . $observations . '.';
+		if ($transports !== '') $aggregateEvidence[] = 'Transport counts: ' . $transports . '.';
+		if (!empty($analysis['packet_count'])) $aggregateEvidence[] = 'Packet count decoded from this PCAP: ' . (int)$analysis['packet_count'] . '.';
+
+		$items[] = [
+			'id' => 'response_aggregate',
+			'text' => 'The response combines aggregate capture counts with the call ladders and summary sections shown below.',
+			'confidence' => 'medium',
+			'simplified' => 'Read the aggregate counts as capture-wide context, then use the displayed ladders for call-level detail.',
+			're_explained' => 'The aggregate counts describe the decoded capture available to this run. The detailed ladder discussion is scoped to the calls displayed in the response, so omitted ladders are not individually interpreted here.',
+			'evidence_text' => $aggregateEvidence,
+			'evidence_refs' => ['outcome_counts', 'final_status_counts', 'observation_counts', 'transport_counts', 'packet_count'],
+		];
+
+		$displayedEvidence = [];
+		foreach ($displayedCalls as $call) {
+			$displayedEvidence[] = $this->formatDisplayedCallEvidence($call);
+		}
+		$items[] = [
+			'id' => 'response_displayed_calls',
+			'text' => "The formatted response displays {$displayedCount} of {$totalCalls} decoded call ladder(s).",
+			'confidence' => 'medium',
+			'simplified' => $totalCalls > $displayedCount
+				? "This view shows {$displayedCount} of {$totalCalls} decoded call ladder(s); focus a Call-ID to inspect omitted ladders."
+				: "This view shows the decoded call ladder(s) available in this response.",
+			're_explained' => $totalCalls > $displayedCount
+				? "Only {$displayedCount} of {$totalCalls} decoded call ladder(s) are shown in detail. The action response discusses those displayed ladders plus aggregate counts, without pretending to review hidden omitted ladders individually."
+				: "The displayed call ladder section covers the decoded calls available in this response. Each call-level statement remains limited to the SIP and RTP packets visible at this capture point.",
+			'evidence_text' => $displayedEvidence,
+			'evidence_refs' => ['displayed_calls', 'top_calls'],
+		];
+
+		$hintEvidence = [];
+		$hintCount = 0;
+		foreach ($displayedCalls as $call) {
+			$callLabel = $this->shortCallLabel($call['call_id'] ?? '');
+			foreach (array_slice($call['summary']['diagnostic_hints'] ?? [], 0, 3) as $hint) {
+				if (!is_array($hint)) continue;
+				$hintCount++;
+				$confidence = $hint['confidence'] ?? 'low';
+				$text = $hint['text'] ?? '';
+				if ($text !== '') $hintEvidence[] = 'Call ' . $callLabel . ' hint (' . $confidence . '): ' . $text;
+				foreach ($hint['evidence_text'] ?? [] as $line) {
+					if ($line !== '') $hintEvidence[] = 'Call ' . $callLabel . ' evidence: ' . $line;
+				}
+			}
+		}
+		if ($hintCount > 0) {
+			$items[] = [
+				'id' => 'response_diagnostic_hints',
+				'text' => "Displayed calls include {$hintCount} diagnostic hint(s).",
+				'confidence' => 'medium',
+				'simplified' => 'The call hints are clues, not proof of a single cause.',
+				're_explained' => 'The diagnostic hints point to notable SIP or RTP observations in the displayed calls. Their confidence labels matter because the capture may be partial, asymmetric, or missing media/signalling paths.',
+				'evidence_text' => array_values(array_unique($hintEvidence)),
+				'evidence_refs' => ['diagnostic_hints', 'displayed_calls'],
+			];
+		}
+
+		foreach (['support_summary', 'likely_next_checks', 'confidence_notes'] as $section) {
+			foreach (($analysis[$section] ?? []) as $item) {
+				if (is_array($item)) $items[] = $item;
+			}
+		}
+
+		return $items;
+	}
+
+	private function formatDisplayedCallEvidence($call) {
+		$label = $this->shortCallLabel($call['call_id'] ?? '');
+		$summary = $call['summary'] ?? [];
+		$outcome = $summary['outcome'] ?? 'unknown';
+		$messageCount = (int)($call['message_count'] ?? 0);
+		$duration = (int)($call['duration_ms'] ?? 0);
+		$final = ($summary['invite_final_status'] ?? null) ?: ($summary['final_status'] ?? null);
+		$finalText = '';
+		if ($final !== null) {
+			$finalText = ', final SIP status ' . (int)($final['code'] ?? 0);
+			if (!empty($final['reason'])) $finalText .= ' ' . $final['reason'];
+		}
+		$rtp = '';
+		if (!empty($summary['rtp']['status'])) {
+			$rtp = ', RTP ' . $summary['rtp']['status'] . ' confidence ' . ($summary['rtp']['confidence'] ?? 'unknown');
+		}
+		return "Displayed call {$label}: outcome {$outcome}, {$messageCount} message(s), duration {$duration}ms{$finalText}{$rtp}.";
+	}
+
+	private function shortCallLabel($callId) {
+		$callId = (string)$callId;
+		if ($callId === '') return 'unknown';
+		return substr($callId, 0, 12);
+	}
+
+	private function formatCountMap($counts, $limit = 8) {
+		if (!is_array($counts) || empty($counts)) return '';
+		$parts = [];
+		foreach (array_slice($counts, 0, $limit, true) as $key => $count) {
+			$parts[] = (string)$key . ': ' . (int)$count;
+		}
+		if (count($counts) > $limit) $parts[] = 'and ' . (count($counts) - $limit) . ' more';
+		return implode('; ', $parts);
+	}
+
+	private function formatFinalStatusCounts($statuses, $limit = 8) {
+		if (!is_array($statuses) || empty($statuses)) return '';
+		$parts = [];
+		foreach (array_slice($statuses, 0, $limit) as $status) {
+			if (!is_array($status)) continue;
+			$code = (int)($status['code'] ?? 0);
+			$reason = trim((string)($status['reason'] ?? ''));
+			$count = (int)($status['count'] ?? 0);
+			$parts[] = trim($code . ' ' . $reason) . ': ' . $count;
+		}
+		if (count($statuses) > $limit) $parts[] = 'and ' . (count($statuses) - $limit) . ' more';
+		return implode('; ', $parts);
 	}
 
 	private function callRef($callId) {
