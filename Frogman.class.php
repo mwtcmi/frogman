@@ -315,32 +315,35 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 		return str_replace(['`', '{{', '['], ["'", '{ {', '('], $value);
 	}
 
-	private function appendPcapSummaryActions(&$lines, $item, $indent = '  ') {
+	private function appendPcapSummaryActions(&$lines, $item, $section = null, $callRef = null, $path = null, $callId = null, $indent = '  ') {
 		if (!is_array($item)) return;
+		$id = $item['id'] ?? null;
+		if (!is_string($id) || $id === '' || !is_string($section) || $section === '') return;
+		if (!is_string($path) || $path === '') return;
 		$hasSimplified = !empty($item['simplified']);
 		$hasReExplained = !empty($item['re_explained']);
 		$hasEvidence = !empty($item['evidence_text']) && is_array($item['evidence_text']);
 		if (!$hasSimplified && !$hasReExplained && !$hasEvidence) return;
-		$lines[] = "{$indent}Options: `Simplify` / `Re-Explain` / `Show Evidence`";
-		if ($hasSimplified) {
-			$lines[] = "{$indent}Simplify: `" . $this->sanitizeForChat($item['simplified']) . "`";
-		}
-		if ($hasReExplained) {
-			$confidence = !empty($item['confidence']) ? ' Confidence `' . $this->sanitizeForChat($item['confidence']) . '`.' : '';
-			$lines[] = "{$indent}Re-Explain: `" . $this->sanitizeForChat($item['re_explained']) . "`{$confidence}";
-		}
-		if ($hasEvidence) {
-			$evidence = [];
-			foreach (array_slice($item['evidence_text'], 0, 4) as $evidenceLine) {
-				if ($evidenceLine !== '') $evidence[] = $this->sanitizeForChat($evidenceLine);
-			}
-			if (!empty($evidence)) {
-				$lines[] = "{$indent}Show Evidence:";
-				foreach ($evidence as $evidenceLine) {
-					$lines[] = "{$indent}- `{$evidenceLine}`";
-				}
-			}
-		}
+		if (!preg_match('/^[a-z0-9_]+$/i', $section) || !preg_match('/^[a-z0-9_:-]+$/i', $id)) return;
+		$target = "{$section} {$id}";
+		if ($callRef !== null && preg_match('/^[a-f0-9]{12}$/i', (string)$callRef)) $target .= " call " . $callRef;
+		$target .= " path " . $this->pcapCommandValue($path);
+		if (is_string($callId) && $callId !== '') $target .= " call_id " . $this->pcapCommandValue($callId);
+		$actions = [];
+		if ($hasSimplified) $actions[] = "{{cmd:pcap action simplify {$target}|Simplify}}";
+		if ($hasReExplained) $actions[] = "{{cmd:pcap action re-explain {$target}|Re-Explain}}";
+		if ($hasEvidence) $actions[] = "{{cmd:pcap action evidence {$target}|Show Evidence}}";
+		if (!empty($actions)) $lines[] = "{$indent}Actions: " . implode(' · ', $actions);
+	}
+
+	private function pcapCallRef($callId) {
+		$callId = (string)$callId;
+		return $callId === '' ? null : substr(sha1($callId), 0, 12);
+	}
+
+	private function pcapCommandValue($value) {
+		$value = preg_replace('/[\x00-\x1F\x7F]/', '', (string)$value);
+		return str_replace(['|', '}}', '{{'], ['/', '} }', '{ {'], $value);
 	}
 
 	/**
@@ -1747,11 +1750,44 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 				return implode("\n", $lines);
 
 			case 'fm_analyze_pcap':
+				if (($data['mode'] ?? '') === 'summary_action') {
+					if (($data['status'] ?? '') !== 'ok') {
+						return $this->sanitizeForChat($data['message'] ?? 'PCAP action could not be resolved.');
+					}
+					$result = $data['result'] ?? [];
+					$title = $this->sanitizeForChat($result['title'] ?? 'PCAP Action');
+					$confidence = !empty($data['confidence']) ? ' · confidence `' . $this->sanitizeForChat($data['confidence']) . '`' : '';
+					$lines = ["**{$title}**{$confidence}"];
+					if (($result['kind'] ?? '') === 'evidence') {
+						$items = $result['items'] ?? [];
+						if (empty($items)) {
+							$lines[] = "No compact evidence text is available for this item.";
+						} else {
+							foreach (array_slice($items, 0, 8) as $evidenceLine) {
+								if ($evidenceLine !== '') $lines[] = "- `" . $this->sanitizeForChat($evidenceLine) . "`";
+							}
+						}
+						if (!empty($result['refs'])) {
+							$refs = array_map([$this, 'sanitizeForChat'], array_slice($result['refs'], 0, 8));
+							$lines[] = "Refs: `" . implode('` `', $refs) . "`";
+						}
+					} else {
+						$text = $this->sanitizeForChat($result['text'] ?? '');
+						$lines[] = $text !== '' ? $text : 'No follow-up text is available for this item.';
+						if (!empty($data['evidence_refs'])) {
+							$refs = array_map([$this, 'sanitizeForChat'], array_slice($data['evidence_refs'], 0, 6));
+							$lines[] = "Refs: `" . implode('` `', $refs) . "`";
+						}
+					}
+					return implode("\n", $lines);
+				}
 				if (!empty($data['unsupported'])) {
 					$reason = $this->sanitizeForChat($data['reason'] ?? 'unsupported');
 					$hint = $this->sanitizeForChat($data['hint'] ?? '');
 					return "**PCAP analysis unsupported** — `{$reason}`" . ($hint !== '' ? "\n`{$hint}`" : '');
 				}
+				$pcapActionPath = $data['path'] ?? '';
+				$pcapActionCallId = (!empty($data['calls']) && count($data['calls']) === 1 && !empty($data['calls'][0]['call_id'])) ? $data['calls'][0]['call_id'] : null;
 				$unparsed = (int)($data['unparsed_sip_message_count'] ?? 0);
 				$unparsedText = $unparsed > 0 ? ", {$unparsed} SIP-like message(s) unparsed" : "";
 				$lines = ["**PCAP SIP ladders** — {$data['sip_message_count']} SIP messages across {$data['call_count']} call(s){$unparsedText}"];
@@ -1865,7 +1901,7 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 									$confidence = $this->sanitizeForChat($hint['confidence'] ?? 'low');
 									$obs = !empty($hint['observations']) ? ' obs ' . implode(', ', array_map([$this, 'sanitizeForChat'], $hint['observations'])) : '';
 									$lines[] = "  Hint ({$confidence}): `{$text}{$obs}`";
-									$this->appendPcapSummaryActions($lines, $hint, '    ');
+									$this->appendPcapSummaryActions($lines, $hint, 'diagnostic_hints', $this->pcapCallRef($call['call_id'] ?? ''), $pcapActionPath, $pcapActionCallId, '    ');
 								} else {
 									$lines[] = "  Hint: `" . $this->sanitizeForChat($hint) . "`";
 								}
@@ -1931,7 +1967,7 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 							$confidence = is_array($item) ? $this->sanitizeForChat($item['confidence'] ?? 'low') : 'low';
 							if ($text !== '') {
 								$lines[] = "- ({$confidence}) {$text}";
-								$this->appendPcapSummaryActions($lines, $item, '  ');
+								$this->appendPcapSummaryActions($lines, $item, 'support_summary', null, $pcapActionPath, $pcapActionCallId, '  ');
 							}
 						}
 					}
@@ -1943,7 +1979,7 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 							$confidence = is_array($item) ? $this->sanitizeForChat($item['confidence'] ?? 'low') : 'low';
 							if ($text !== '') {
 								$lines[] = "- ({$confidence}) {$text}";
-								$this->appendPcapSummaryActions($lines, $item, '  ');
+								$this->appendPcapSummaryActions($lines, $item, 'likely_next_checks', null, $pcapActionPath, $pcapActionCallId, '  ');
 							}
 						}
 					}
@@ -1954,7 +1990,7 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 							$text = $this->sanitizeForChat(is_array($item) ? ($item['text'] ?? '') : $item);
 							if ($text !== '') {
 								$lines[] = "- {$text}";
-								$this->appendPcapSummaryActions($lines, $item, '  ');
+								$this->appendPcapSummaryActions($lines, $item, 'confidence_notes', null, $pcapActionPath, $pcapActionCallId, '  ');
 							}
 						}
 					}

@@ -12,7 +12,7 @@ class PcapAnalysis extends AbstractTool {
 	const RTP_ANSWERED_POST_SIGNALLING_TOLERANCE_SECONDS = 60;
 
 	public function name() { return 'fm_analyze_pcap'; }
-	public function description() { return 'Read-only SIP decoder for classic .pcap captures. Params: path (required), call_id (optional), max_messages (default 200, max 500), max_calls (default 25, max 100). Returns SIP ladders, call summaries, and agent-facing analysis grouped by Call-ID.'; }
+	public function description() { return 'Read-only SIP decoder for classic .pcap captures. Params: path (required), call_id (optional), max_messages (default 200, max 500), max_calls (default 25, max 100), summary_action/section/item_id optional for follow-up views. Returns SIP ladders, call summaries, and agent-facing analysis grouped by Call-ID.'; }
 	public function permissionLevel() { return self::PERM_ADMIN; }
 
 	public function validate($params) {
@@ -24,6 +24,25 @@ class PcapAnalysis extends AbstractTool {
 		if ($err !== null) return $err;
 		if (isset($params['call_id']) && (!is_string($params['call_id']) || trim($params['call_id']) === '')) {
 			return 'Parameter "call_id" must be a non-empty string when supplied';
+		}
+		if (isset($params['summary_action'])) {
+			$allowedActions = ['simplify', 're_explain', 'show_evidence'];
+			$allowedSections = ['support_summary', 'likely_next_checks', 'confidence_notes', 'diagnostic_hints'];
+			if (!in_array($params['summary_action'], $allowedActions, true)) {
+				return 'Parameter "summary_action" must be one of: ' . implode(', ', $allowedActions);
+			}
+			if (empty($params['section']) || !in_array($params['section'], $allowedSections, true)) {
+				return 'Parameter "section" must be one of: ' . implode(', ', $allowedSections);
+			}
+			if (empty($params['item_id']) || !is_string($params['item_id']) || !preg_match('/^[a-z0-9_:-]+$/i', $params['item_id'])) {
+				return 'Parameter "item_id" must be a non-empty summary item id';
+			}
+			if (isset($params['call_index']) && ((int)$params['call_index'] < 0 || (string)(int)$params['call_index'] !== (string)$params['call_index'])) {
+				return 'Parameter "call_index" must be a non-negative integer when supplied';
+			}
+			if (isset($params['call_ref']) && (!is_string($params['call_ref']) || !preg_match('/^[a-f0-9]{12}$/i', $params['call_ref']))) {
+				return 'Parameter "call_ref" must be a 12-character call reference when supplied';
+			}
 		}
 		foreach (['max_messages' => 500, 'max_calls' => 100] as $key => $max) {
 			if (isset($params[$key])) {
@@ -57,6 +76,10 @@ class PcapAnalysis extends AbstractTool {
 		$calls = $this->groupByCallId($decoded['messages'], $maxCalls);
 		$this->attachRtpAnalysis($calls, $decoded);
 		$summary = $this->summariseCapture($calls, $decoded);
+
+		if (isset($params['summary_action'])) {
+			return $this->resolveSummaryAction($params, $path, $calls, $summary);
+		}
 
 		return [
 			'status' => 'ok',
@@ -1654,6 +1677,95 @@ class PcapAnalysis extends AbstractTool {
 			'confidence' => $confidence,
 			'evidence' => array_values($evidence),
 		];
+	}
+
+	private function resolveSummaryAction($params, $path, $calls, $analysis) {
+		$item = $this->findSummaryActionItem($calls, $analysis, $params['section'], $params['item_id'], $params['call_index'] ?? null, $params['call_ref'] ?? null);
+		if ($item === null) {
+			return [
+				'status' => 'not_found',
+				'mode' => 'summary_action',
+				'summary_action' => $params['summary_action'],
+				'section' => $params['section'],
+				'item_id' => $params['item_id'],
+				'message' => 'That PCAP summary item was not found in the analysis result.',
+			];
+		}
+		return [
+			'status' => 'ok',
+			'mode' => 'summary_action',
+			'path' => $path,
+			'summary_action' => $params['summary_action'],
+			'section' => $params['section'],
+			'item_id' => $params['item_id'],
+			'call_index' => isset($params['call_index']) ? (int)$params['call_index'] : null,
+			'call_ref' => $params['call_ref'] ?? null,
+			'confidence' => $item['confidence'] ?? null,
+			'text' => $item['text'] ?? null,
+			'observations' => $item['observations'] ?? [],
+			'evidence_refs' => $item['evidence_refs'] ?? ($item['evidence'] ?? []),
+			'result' => $this->summaryActionResult($params['summary_action'], $item),
+		];
+	}
+
+	private function findSummaryActionItem($calls, $analysis, $section, $itemId, $callIndex, $callRef) {
+		if ($section === 'diagnostic_hints') {
+			if ($callRef !== null) {
+				$callRef = strtolower((string)$callRef);
+				foreach ($calls as $call) {
+					if ($this->callRef($call['call_id'] ?? '') !== $callRef) continue;
+					return $this->findSummaryItemById($call['summary']['diagnostic_hints'] ?? [], $itemId);
+				}
+				return null;
+			}
+			if ($callIndex !== null) {
+				$idx = (int)$callIndex;
+				if (!isset($calls[$idx])) return null;
+				return $this->findSummaryItemById($calls[$idx]['summary']['diagnostic_hints'] ?? [], $itemId);
+			}
+			foreach ($calls as $call) {
+				$item = $this->findSummaryItemById($call['summary']['diagnostic_hints'] ?? [], $itemId);
+				if ($item !== null) return $item;
+			}
+			return null;
+		}
+		return $this->findSummaryItemById($analysis[$section] ?? [], $itemId);
+	}
+
+	private function findSummaryItemById($items, $itemId) {
+		if (!is_array($items)) return null;
+		foreach ($items as $item) {
+			if (is_array($item) && (string)($item['id'] ?? '') === (string)$itemId) return $item;
+		}
+		return null;
+	}
+
+	private function summaryActionResult($action, $item) {
+		if ($action === 'simplify') {
+			return [
+				'kind' => 'text',
+				'title' => 'Simplify',
+				'text' => $item['simplified'] ?? ($item['text'] ?? ''),
+			];
+		}
+		if ($action === 're_explain') {
+			return [
+				'kind' => 'text',
+				'title' => 'Re-Explain',
+				'text' => $item['re_explained'] ?? ($item['text'] ?? ''),
+			];
+		}
+		return [
+			'kind' => 'evidence',
+			'title' => 'Show Evidence',
+			'items' => array_values($item['evidence_text'] ?? []),
+			'refs' => array_values($item['evidence_refs'] ?? ($item['evidence'] ?? [])),
+		];
+	}
+
+	private function callRef($callId) {
+		$callId = (string)$callId;
+		return $callId === '' ? null : substr(sha1($callId), 0, 12);
 	}
 
 	private function enrichSummaryLines($lines, $calls = [], $rtpSummary = null) {

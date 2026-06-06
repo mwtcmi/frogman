@@ -1952,6 +1952,25 @@ class ChatParser {
 			return ['tool' => 'fm_list_pcaps', 'params' => $all ? ['all' => true] : []];
 		}
 
+		// PcapAnalysis follow-up action chips. The command carries explicit
+		// re-run params so no PCAP state is stored in the chat session.
+		if (preg_match('/^pcap\s+action\s+(simplify|re-explain|re_explain|evidence|show-evidence|show_evidence)\s+([a-z_]+)\s+([a-z0-9_:-]+)(?:\s+call\s+([a-f0-9]{12}|\d+))?\s+path\s+(.+?\.(?:pcap|cap))(?:\s+call[_\s-]?id\s+(\S+))?\s*$/i', $msg, $m)) {
+			$action = strtolower(str_replace('-', '_', $m[1]));
+			if ($action === 'evidence' || $action === 'show_evidence') $action = 'show_evidence';
+			$params = [
+				'path' => trim($m[5]),
+				'summary_action' => $action,
+				'section' => strtolower($m[2]),
+				'item_id' => $m[3],
+			];
+			if (isset($m[6]) && $m[6] !== '') $params['call_id'] = trim($m[6]);
+			if (isset($m[4]) && $m[4] !== '') {
+				if (preg_match('/^[a-f0-9]{12}$/i', $m[4])) $params['call_ref'] = strtolower($m[4]);
+				else $params['call_index'] = (int)$m[4];
+			}
+			return ['tool' => 'fm_analyze_pcap', 'params' => $params];
+		}
+
 		// PcapAnalysis: analyze one Call-ID from an existing capture file by path.
 		if (preg_match('/^\s*(?:analyse|analyze)\s+(?:the\s+)?(?:pcap|capture)\s+(\S.*\.(?:pcap|cap))\s+call[_\s-]?id\s+(\S+)\s*$/i', $message, $m)) {
 			return ['tool' => 'fm_analyze_pcap', 'params' => ['path' => trim($m[1]), 'call_id' => trim($m[2])]];
