@@ -975,7 +975,7 @@ class PcapAnalysis extends AbstractTool {
 		if (isset($obs['codec_mismatch_vs_sdp'])) {
 			$hints[] = $this->diagnosticHint('codec_mismatch_vs_sdp', 'Observed RTP payload types differ from SDP expectations; this is low-to-medium confidence because dynamic payload types are scoped by SDP and can be reused benignly.', 'low', ['codec_mismatch_vs_sdp', 'sdp_present']);
 		}
-		return $hints;
+		return $this->enrichSummaryLines($hints, [$call], null);
 	}
 
 	private function diagnosticHint($id, $text, $confidence, $observations) {
@@ -1476,6 +1476,23 @@ class PcapAnalysis extends AbstractTool {
 				['rtp_summary.answered_status_counts.rtp_absent_despite_answer', 'observation_counts.rtp_absent_despite_answer']
 			);
 		}
+		$rtpStatusCounts = $rtpSummary['status_counts'] ?? [];
+		if (!empty($rtpStatusCounts['rtp_not_seen_before_cancellation'])) {
+			$lines[] = $this->supportLine(
+				'rtp_not_seen_before_cancellation',
+				"For {$rtpStatusCounts['rtp_not_seen_before_cancellation']} cancelled call flow(s), SDP media was negotiated but no matching RTP was seen at this capture point before cancellation.",
+				$this->rtpStatusConfidence($rtpSummary, 'rtp_not_seen_before_cancellation'),
+				['rtp_summary.status_counts.rtp_not_seen_before_cancellation']
+			);
+		}
+		if (!empty($rtpStatusCounts['rtp_not_seen_at_capture_point'])) {
+			$lines[] = $this->supportLine(
+				'rtp_not_seen_at_capture_point',
+				"For {$rtpStatusCounts['rtp_not_seen_at_capture_point']} call flow(s), SDP media was negotiated but no matching RTP was seen at this capture point.",
+				$this->rtpStatusConfidence($rtpSummary, 'rtp_not_seen_at_capture_point'),
+				['rtp_summary.status_counts.rtp_not_seen_at_capture_point']
+			);
+		}
 		if (!empty($observations['private_sdp_connection_address'])) {
 			$lines[] = $this->supportLine(
 				'private_sdp_connection_address',
@@ -1492,7 +1509,7 @@ class PcapAnalysis extends AbstractTool {
 				['sip_message_count', 'call_count']
 			);
 		}
-		return $lines;
+		return $this->enrichSummaryLines($lines, $calls, $rtpSummary);
 	}
 
 	private function deriveLikelyNextChecks($calls, $observations, $rtpSummary) {
@@ -1553,7 +1570,7 @@ class PcapAnalysis extends AbstractTool {
 				['observation_counts', 'focus_call']
 			);
 		}
-		return $checks;
+		return $this->enrichSummaryLines($checks, $calls, $rtpSummary);
 	}
 
 	private function deriveConfidenceNotes($calls, $decoded, $observations, $rtpSummary) {
@@ -1614,7 +1631,7 @@ class PcapAnalysis extends AbstractTool {
 				['packet_count', 'sip_message_count']
 			);
 		}
-		return $notes;
+		return $this->enrichSummaryLines($notes, $calls, $rtpSummary);
 	}
 
 	private function deriveEvidenceHighlights($calls, $decoded, $inviteOutcomes, $finalStatusCounts, $observations, $rtpSummary, $focus) {
@@ -1637,6 +1654,382 @@ class PcapAnalysis extends AbstractTool {
 			'confidence' => $confidence,
 			'evidence' => array_values($evidence),
 		];
+	}
+
+	private function enrichSummaryLines($lines, $calls = [], $rtpSummary = null) {
+		$out = [];
+		foreach ($lines as $line) {
+			if (!is_array($line)) {
+				$out[] = $line;
+				continue;
+			}
+			$out[] = $this->enrichSummaryLine($line, $calls, $rtpSummary);
+		}
+		return $out;
+	}
+
+	private function enrichSummaryLine($line, $calls = [], $rtpSummary = null) {
+		$id = $line['id'] ?? null;
+		if (!is_string($id) || $id === '') return $line;
+		$template = $this->postSummaryTemplate($id);
+		if (empty($template)) return $line;
+		$line['simplified'] = $template['simplified'];
+		$line['re_explained'] = $template['re_explained'];
+		$line['evidence_refs'] = array_values(array_unique(array_merge($line['evidence'] ?? [], $line['observations'] ?? [])));
+		$evidenceText = $this->postSummaryEvidenceText($id, $line, $calls, $rtpSummary);
+		if (!empty($evidenceText)) $line['evidence_text'] = $evidenceText;
+		return $line;
+	}
+
+	private function postSummaryTemplate($id) {
+		$map = [
+			'no_invite_calls' => [
+				'simplified' => 'No call setup attempt was decoded in this capture.',
+				're_explained' => 'No decoded INVITE flow is present, so the capture does not contain enough SIP setup evidence to determine call setup behaviour.',
+			],
+			'answered_invites' => [
+				'simplified' => 'One or more calls were answered at the signalling level.',
+				're_explained' => 'The INVITE transaction reached a 2xx final response. This supports an answered call at SIP signalling level.',
+			],
+			'answered_invite' => [
+				'simplified' => 'The call was answered at the signalling level.',
+				're_explained' => 'The INVITE reached a 2xx final response. This supports an answered SIP dialog, subject to capture scope.',
+			],
+			'busy_invites' => [
+				'simplified' => 'The destination appears to have been busy.',
+				're_explained' => 'The captured final SIP response was 486 or 600, which supports a busy destination or downstream busy condition.',
+			],
+			'busy_response' => [
+				'simplified' => 'The destination appears to have been busy.',
+				're_explained' => 'The captured final SIP response was 486 or 600, which supports a busy destination or downstream busy condition.',
+			],
+			'failed_invites' => [
+				'simplified' => 'One or more calls ended with a failure response.',
+				're_explained' => 'The INVITE ended in a SIP failure response. The final status and Reason header are the strongest captured signalling evidence.',
+			],
+			'failed_final_response' => [
+				'simplified' => 'The call ended with a failure response.',
+				're_explained' => 'The INVITE ended in a SIP failure response. The final status and Reason header are the strongest captured signalling evidence.',
+			],
+			'cancelled_invites' => [
+				'simplified' => 'The call was cancelled before it was answered.',
+				're_explained' => 'The INVITE was terminated before a 2xx answer. The CANCEL and 487 response are consistent with a normal SIP cancellation flow.',
+			],
+			'cancelled_before_answer' => [
+				'simplified' => 'The call was cancelled before it was answered.',
+				're_explained' => 'The INVITE was terminated before a 2xx answer. The CANCEL and 487 response are consistent with a normal SIP cancellation flow.',
+			],
+			'incomplete_invites' => [
+				'simplified' => 'The capture did not show the end of one or more call setup attempts.',
+				're_explained' => 'An INVITE was decoded without a final response. The capture may be incomplete, one-sided, or too short for that flow.',
+			],
+			'invite_without_final_response_in_capture' => [
+				'simplified' => 'The capture did not show the final answer or failure for this call.',
+				're_explained' => 'An INVITE was decoded without a final response. The capture may be incomplete, one-sided, or too short for that flow.',
+			],
+			'answered_without_ack_seen' => [
+				'simplified' => 'The answer was captured, but the follow-up ACK was not seen here.',
+				're_explained' => 'A 2xx INVITE response is present, but the matching ACK is not decoded in this capture. This may reflect capture asymmetry or routing outside this capture point.',
+			],
+			'answered_rtp_both_directions' => [
+				'simplified' => 'Media packets were seen travelling both ways at this capture point.',
+				're_explained' => 'RTP was matched in both captured directions at this capture point. This supports bidirectional media visibility in the capture.',
+			],
+			'rtp_both_directions' => [
+				'simplified' => 'Media packets were seen travelling both ways at this capture point.',
+				're_explained' => 'RTP was matched in both captured directions at this capture point. This supports bidirectional media visibility in the capture.',
+			],
+			'answered_rtp_one_direction_only' => [
+				'simplified' => 'Media packets were only seen travelling one way in this capture.',
+				're_explained' => 'RTP was matched in only one captured direction. This is consistent with media visibility asymmetry, but does not prove what either endpoint heard.',
+			],
+			'rtp_one_direction_only' => [
+				'simplified' => 'Media packets were only seen travelling one way in this capture.',
+				're_explained' => 'RTP was matched in only one captured direction. This is consistent with media visibility asymmetry, but does not prove what either endpoint heard.',
+			],
+			'answered_rtp_absent' => [
+				'simplified' => 'The call was answered, but this capture did not show RTP media packets at this capture point.',
+				're_explained' => 'The INVITE reached a 2xx final response and SDP media was negotiated, but no matching RTP stream was observed at this capture point. Direct media or capture placement may explain this.',
+			],
+			'rtp_absent_despite_answer' => [
+				'simplified' => 'The call was answered, but this capture did not show RTP media packets at this capture point.',
+				're_explained' => 'The INVITE reached a 2xx final response and SDP media was negotiated, but no matching RTP stream was observed at this capture point. Direct media or capture placement may explain this.',
+			],
+			'rtp_not_seen_before_cancellation' => [
+				'simplified' => 'No media packets were captured at this capture point before the call was cancelled.',
+				're_explained' => 'SDP media was negotiated, but no matching RTP stream was observed at this capture point before cancellation. This does not prove that media was impossible or absent elsewhere.',
+			],
+			'rtp_not_seen_at_capture_point' => [
+				'simplified' => 'Media was negotiated, but no media packets were captured at this capture point.',
+				're_explained' => 'SDP media was negotiated, but no matching RTP stream was observed at this capture point. This does not prove that media was absent elsewhere.',
+			],
+			'rtp_sequence_gaps' => [
+				'simplified' => 'Some RTP packet sequence numbers had gaps in this capture.',
+				're_explained' => 'RTP sequence gaps were estimated from captured packets. They may indicate loss, but this capture cannot distinguish network loss from capture-point loss.',
+			],
+			'codec_mismatch_vs_sdp' => [
+				'simplified' => 'Captured RTP payload types did not fully match the decoded media offer.',
+				're_explained' => 'Observed RTP payload types differed from decoded SDP payload types. Confidence is limited because dynamic payload types are scoped by SDP and can be reused benignly.',
+			],
+			'private_sdp_connection_address' => [
+				'simplified' => 'The call advertised a private media address.',
+				're_explained' => 'SDP advertised a private connection address. If either side is remote, NAT or media-address configuration could be relevant, but this does not prove misconfiguration.',
+			],
+			'large_signalling_gap' => [
+				'simplified' => 'There was a long pause in the call signalling.',
+				're_explained' => 'A multi-second gap was measured between SIP messages. If this follows 180 or 183, normal ringing is often the first explanation.',
+			],
+			'retransmissions_seen' => [
+				'simplified' => 'Some SIP messages were repeated.',
+				're_explained' => 'Byte-identical non-provisional SIP messages repeated in the decoded capture. This may reflect retry behaviour or capture conditions, but it does not prove a loss cause.',
+			],
+			'authentication_challenge' => [
+				'simplified' => 'The server asked for SIP authentication.',
+				're_explained' => 'A 401 or 407 SIP response was decoded. That is often normal digest authentication unless the flow stops there.',
+			],
+			'check_nat_media_addresses' => [
+				'simplified' => 'Check whether the private media address is expected for this network.',
+				're_explained' => 'Review media-address and local-network settings against the decoded SDP address. This is a configuration check, not proof of a NAT fault.',
+			],
+			'check_one_direction_rtp_visibility' => [
+				'simplified' => 'Check whether this capture point should see media in both directions.',
+				're_explained' => 'Compare SDP media addresses with observed RTP directions and capture placement. One-way visibility at this capture point does not prove what either endpoint heard.',
+			],
+			'check_capture_location_for_absent_rtp' => [
+				'simplified' => 'Check whether RTP should pass through this capture point.',
+				're_explained' => 'Confirm capture placement and whether media is expected to traverse this host. Absence of RTP at this capture point is not proof of absent media elsewhere.',
+			],
+			'check_retransmission_context' => [
+				'simplified' => 'Compare repeated SIP messages with nearby responses before deciding what they mean.',
+				're_explained' => 'Repeated SIP messages need context from surrounding responses and capture scope before treating them as network loss.',
+			],
+			'check_signalling_gap_context' => [
+				'simplified' => 'Check what happened around the long pause.',
+				're_explained' => 'A signalling gap after 180 or 183 often reflects ringing. A gap before provisional response or before failure may support reviewing routing, DNS, authentication, or upstream timing.',
+			],
+			'check_missing_ack_visibility' => [
+				'simplified' => 'Check whether the ACK travelled somewhere this capture could not see.',
+				're_explained' => 'For answered calls without a decoded ACK, capture asymmetry or routing outside this capture point should be checked before treating the ACK as truly absent.',
+			],
+			'preserve_scope_or_capture_more' => [
+				'simplified' => 'Narrow the capture or collect closer to the endpoint if more detail is needed.',
+				're_explained' => 'The decoded observations do not strongly support a specific next check. Focusing one Call-ID or capturing closer to the signalling or media path may provide better evidence.',
+			],
+			'rtp_capture_point_scope' => [
+				'simplified' => 'RTP findings only describe what this capture point saw.',
+				're_explained' => 'RTP conclusions are scoped to packets visible at this capture point and do not prove media behaviour elsewhere.',
+			],
+			'rtp_absence_not_proof' => [
+				'simplified' => 'Not seeing RTP here does not prove there was no media anywhere.',
+				're_explained' => 'Absence of RTP in this capture is limited by capture placement and does not prove media was absent on another path.',
+			],
+			'rtp_sequence_gap_estimate_scope' => [
+				'simplified' => 'RTP gap estimates only describe captured packets.',
+				're_explained' => 'RTP sequence gaps are estimates from captured packets and cannot distinguish network loss from capture-point loss.',
+			],
+			'tcp_reassembly_scope' => [
+				'simplified' => 'Some SIP messages were rebuilt from TCP pieces, so read those with extra caution.',
+				're_explained' => 'TCP SIP messages recovered through simple reassembly carry lower confidence than complete packet-level SIP messages.',
+			],
+			'unparsed_sip_scope' => [
+				'simplified' => 'Some SIP-like data could not be fully read.',
+				're_explained' => 'Unparsed SIP-like messages mean decoded message and call totals may be incomplete.',
+			],
+			'clean_answered_gap_scope' => [
+				'simplified' => 'For answered calls, a long pause can simply be ringing time.',
+				're_explained' => 'For clean answered calls, a multi-second signalling gap can reflect ring time or human answer delay.',
+			],
+			'evidence_scope' => [
+				'simplified' => 'This result only covers packets that were captured.',
+				're_explained' => 'Interpretation is limited to decoded packets in this capture. The capture may not include every signalling or media path.',
+			],
+			'insufficient_evidence' => [
+				'simplified' => 'There is not enough captured evidence to name a specific cause.',
+				're_explained' => 'The decoded capture does not provide enough evidence to determine a specific cause.',
+			],
+		];
+		return $map[$id] ?? null;
+	}
+
+	private function postSummaryEvidenceText($id, $line, $calls = [], $rtpSummary = null) {
+		$text = [];
+		if (!empty($line['evidence'])) {
+			$text[] = 'Evidence refs: ' . implode(', ', array_values($line['evidence']));
+		}
+		$call = $this->representativeCallForSummaryId($id, $calls);
+		if ($call !== null) {
+			foreach ($this->compactCallEvidence($call, $id) as $evidence) {
+				$text[] = $evidence;
+			}
+		}
+		if (strpos($id, 'rtp_') !== false || strpos($id, '_rtp_') !== false || strpos($id, 'capture_location') !== false || strpos($id, 'one_direction') !== false) {
+			if ($call !== null) {
+				foreach ($this->compactRtpEvidence($call) as $evidence) {
+					$text[] = $evidence;
+				}
+			} elseif (is_array($rtpSummary) && !empty($rtpSummary['status_counts'])) {
+				$text[] = 'RTP status counts: ' . json_encode($rtpSummary['status_counts']);
+			}
+		}
+		return array_values(array_unique($text));
+	}
+
+	private function representativeCallForSummaryId($id, $calls) {
+		if (!is_array($calls)) return null;
+		$statusById = [
+			'answered_rtp_both_directions' => 'rtp_both_directions',
+			'answered_rtp_one_direction_only' => 'rtp_one_direction_only',
+			'answered_rtp_absent' => 'rtp_absent_despite_answer',
+			'check_one_direction_rtp_visibility' => 'rtp_one_direction_only',
+			'check_capture_location_for_absent_rtp' => 'rtp_absent_despite_answer',
+		];
+		$outcomeById = [
+			'answered_invites' => 'answered',
+			'answered_invite' => 'answered',
+			'busy_invites' => 'busy',
+			'busy_response' => 'busy',
+			'failed_invites' => 'failed',
+			'failed_final_response' => 'failed',
+			'cancelled_invites' => 'cancelled',
+			'cancelled_before_answer' => 'cancelled',
+			'incomplete_invites' => 'incomplete_capture',
+			'invite_without_final_response_in_capture' => 'incomplete_capture',
+			'answered_without_ack_seen' => 'answered',
+		];
+		$obsById = [
+			'private_sdp_connection_address' => 'private_sdp_connection_address',
+			'check_nat_media_addresses' => 'private_sdp_connection_address',
+			'large_signalling_gap' => 'large_signalling_gap',
+			'check_signalling_gap_context' => 'large_signalling_gap',
+			'retransmissions_seen' => 'retransmissions_seen',
+			'check_retransmission_context' => 'retransmissions_seen',
+			'rtp_sequence_gaps' => 'rtp_sequence_gaps',
+			'codec_mismatch_vs_sdp' => 'codec_mismatch_vs_sdp',
+			'tcp_reassembly_scope' => 'reassembled',
+			'rtp_absence_not_proof' => 'rtp_absent_despite_answer',
+			'rtp_sequence_gap_estimate_scope' => 'rtp_sequence_gaps',
+		];
+		foreach ($calls as $call) {
+			$status = $call['summary']['rtp']['status'] ?? null;
+			if (isset($statusById[$id]) && $status === $statusById[$id]) return $call;
+			if (strpos($id, 'rtp_') === 0 && $status === $id) return $call;
+			if (isset($outcomeById[$id]) && ($call['summary']['outcome'] ?? null) === $outcomeById[$id]) return $call;
+			if (isset($obsById[$id])) {
+				if ($obsById[$id] === 'reassembled' && $this->hasReassembledMessages([$call])) return $call;
+				if (in_array($obsById[$id], $call['summary']['observations'] ?? [], true)) return $call;
+			}
+		}
+		return !empty($calls) ? $calls[0] : null;
+	}
+
+	private function compactCallEvidence($call, $id) {
+		$messages = $call['messages'] ?? [];
+		if (empty($messages)) return [];
+		if ($id === 'large_signalling_gap' || $id === 'check_signalling_gap_context' || $id === 'clean_answered_gap_scope') {
+			return $this->largestGapEvidence($messages);
+		}
+		if ($id === 'private_sdp_connection_address' || $id === 'check_nat_media_addresses') {
+			return $this->sdpEvidence($call);
+		}
+		$wanted = $this->wantedSipEvidence($id);
+		$out = [];
+		foreach ($messages as $msg) {
+			if (!$this->messageMatchesEvidenceRequest($msg, $wanted)) continue;
+			$out[] = $this->formatMessageEvidence($msg);
+			if (count($out) >= 6) break;
+		}
+		if (empty($out)) {
+			foreach (array_slice($messages, 0, 4) as $msg) $out[] = $this->formatMessageEvidence($msg);
+		}
+		if ($this->hasReassembledMessages([$call])) $out[] = 'TCP reassembled SIP message(s) present in this ladder.';
+		return $out;
+	}
+
+	private function wantedSipEvidence($id) {
+		$map = [
+			'answered_invites' => ['methods' => ['INVITE', 'ACK', 'BYE'], 'statuses' => [200]],
+			'answered_invite' => ['methods' => ['INVITE', 'ACK', 'BYE'], 'statuses' => [200]],
+			'answered_rtp_absent' => ['methods' => ['INVITE', 'ACK'], 'statuses' => [200]],
+			'rtp_absent_despite_answer' => ['methods' => ['INVITE', 'ACK'], 'statuses' => [200]],
+			'busy_invites' => ['methods' => ['INVITE'], 'statuses' => [486, 600]],
+			'busy_response' => ['methods' => ['INVITE'], 'statuses' => [486, 600]],
+			'failed_invites' => ['methods' => ['INVITE'], 'status_min' => 400],
+			'failed_final_response' => ['methods' => ['INVITE'], 'status_min' => 400],
+			'cancelled_invites' => ['methods' => ['INVITE', 'CANCEL'], 'statuses' => [200, 487]],
+			'cancelled_before_answer' => ['methods' => ['INVITE', 'CANCEL'], 'statuses' => [200, 487]],
+			'rtp_not_seen_before_cancellation' => ['methods' => ['INVITE', 'CANCEL'], 'statuses' => [200, 487]],
+			'incomplete_invites' => ['methods' => ['INVITE']],
+			'invite_without_final_response_in_capture' => ['methods' => ['INVITE']],
+			'authentication_challenge' => ['methods' => ['REGISTER', 'INVITE'], 'statuses' => [401, 407]],
+			'answered_without_ack_seen' => ['methods' => ['INVITE'], 'statuses' => [200]],
+		];
+		return $map[$id] ?? ['methods' => ['INVITE', 'CANCEL', 'ACK', 'BYE'], 'status_min' => 180];
+	}
+
+	private function messageMatchesEvidenceRequest($msg, $wanted) {
+		$method = $msg['method'] ?? null;
+		if ($method === null && !empty($msg['line']) && preg_match('/^([A-Z][A-Z0-9_-]+)\s+/', $msg['line'], $m)) $method = $m[1];
+		if ($method === null && !empty($msg['cseq']) && preg_match('/\b([A-Z][A-Z0-9_-]+)\s*$/', $msg['cseq'], $m)) $method = $m[1];
+		$status = isset($msg['status_code']) ? (int)$msg['status_code'] : null;
+		if ($status !== null) {
+			if (!empty($wanted['statuses']) && in_array($status, $wanted['statuses'], true)) return true;
+			if (isset($wanted['status_min']) && $status >= (int)$wanted['status_min']) return true;
+		}
+		return $method !== null && in_array($method, $wanted['methods'] ?? [], true);
+	}
+
+	private function formatMessageEvidence($msg) {
+		$t = isset($msg['t_ms']) ? '+' . (int)$msg['t_ms'] . 'ms' : 'time unavailable';
+		$line = $msg['line'] ?? '';
+		$cseq = !empty($msg['cseq']) ? ' CSeq ' . $msg['cseq'] : '';
+		return trim("SIP {$t}: {$line}{$cseq}");
+	}
+
+	private function largestGapEvidence($messages) {
+		$bestGap = 0;
+		$bestPrev = null;
+		$bestNext = null;
+		$prev = null;
+		foreach ($messages as $msg) {
+			if ($prev !== null && isset($prev['t_ms'], $msg['t_ms'])) {
+				$gap = (int)$msg['t_ms'] - (int)$prev['t_ms'];
+				if ($gap > $bestGap) {
+					$bestGap = $gap;
+					$bestPrev = $prev;
+					$bestNext = $msg;
+				}
+			}
+			$prev = $msg;
+		}
+		if ($bestPrev === null || $bestNext === null) return [];
+		return [
+			'Largest signalling gap: ' . $bestGap . 'ms.',
+			'Before gap: ' . $this->formatMessageEvidence($bestPrev),
+			'After gap: ' . $this->formatMessageEvidence($bestNext),
+		];
+	}
+
+	private function sdpEvidence($call) {
+		$out = [];
+		foreach (array_slice($call['summary']['media'] ?? [], 0, 2) as $media) {
+			if (!empty($media['connection'])) $out[] = 'SDP connection: ' . $media['connection'];
+			foreach (array_slice($media['media'] ?? [], 0, 2) as $mline) $out[] = 'SDP media: ' . $mline;
+		}
+		return $out;
+	}
+
+	private function compactRtpEvidence($call) {
+		$rtp = $call['summary']['rtp'] ?? null;
+		if (empty($rtp)) return [];
+		$out = [];
+		$ports = !empty($rtp['negotiated_media_ports']) ? implode(', ', array_map('strval', $rtp['negotiated_media_ports'])) : 'none';
+		$out[] = 'RTP status: ' . ($rtp['status'] ?? 'unknown') . ', confidence ' . ($rtp['confidence'] ?? 'unknown') . ', matched streams ' . count($rtp['streams'] ?? []) . ', negotiated media ports ' . $ports . '.';
+		foreach (array_slice($rtp['streams'] ?? [], 0, 2) as $stream) {
+			$timing = $stream['timing_correlation']['basis'] ?? 'timing unavailable';
+			$out[] = 'RTP stream: ' . ($stream['src'] ?? '') . ' -> ' . ($stream['dst'] ?? '') . ', basis ' . ($stream['correlation_basis'] ?? 'unknown') . ', timing ' . $timing . ', confidence ' . ($stream['confidence'] ?? 'unknown') . '.';
+		}
+		if (!empty($rtp['sequence_gap_estimate_percent'])) $out[] = 'RTP sequence gap estimate: ' . $rtp['sequence_gap_estimate_percent'] . '%.';
+		return $out;
 	}
 
 	private function explainObservationCounts($observations) {

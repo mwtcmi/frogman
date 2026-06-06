@@ -315,6 +315,34 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 		return str_replace(['`', '{{', '['], ["'", '{ {', '('], $value);
 	}
 
+	private function appendPcapSummaryActions(&$lines, $item, $indent = '  ') {
+		if (!is_array($item)) return;
+		$hasSimplified = !empty($item['simplified']);
+		$hasReExplained = !empty($item['re_explained']);
+		$hasEvidence = !empty($item['evidence_text']) && is_array($item['evidence_text']);
+		if (!$hasSimplified && !$hasReExplained && !$hasEvidence) return;
+		$lines[] = "{$indent}Options: `Simplify` / `Re-Explain` / `Show Evidence`";
+		if ($hasSimplified) {
+			$lines[] = "{$indent}Simplify: `" . $this->sanitizeForChat($item['simplified']) . "`";
+		}
+		if ($hasReExplained) {
+			$confidence = !empty($item['confidence']) ? ' Confidence `' . $this->sanitizeForChat($item['confidence']) . '`.' : '';
+			$lines[] = "{$indent}Re-Explain: `" . $this->sanitizeForChat($item['re_explained']) . "`{$confidence}";
+		}
+		if ($hasEvidence) {
+			$evidence = [];
+			foreach (array_slice($item['evidence_text'], 0, 4) as $evidenceLine) {
+				if ($evidenceLine !== '') $evidence[] = $this->sanitizeForChat($evidenceLine);
+			}
+			if (!empty($evidence)) {
+				$lines[] = "{$indent}Show Evidence:";
+				foreach ($evidence as $evidenceLine) {
+					$lines[] = "{$indent}- `{$evidenceLine}`";
+				}
+			}
+		}
+	}
+
 	/**
 	 * Map a severity label to a visual icon for chat rendering.
 	 * Used by the fm_audit_* formatter cases.
@@ -1837,6 +1865,7 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 									$confidence = $this->sanitizeForChat($hint['confidence'] ?? 'low');
 									$obs = !empty($hint['observations']) ? ' obs ' . implode(', ', array_map([$this, 'sanitizeForChat'], $hint['observations'])) : '';
 									$lines[] = "  Hint ({$confidence}): `{$text}{$obs}`";
+									$this->appendPcapSummaryActions($lines, $hint, '    ');
 								} else {
 									$lines[] = "  Hint: `" . $this->sanitizeForChat($hint) . "`";
 								}
@@ -1900,7 +1929,10 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 						foreach (array_slice($data['analysis']['support_summary'], 0, 4) as $item) {
 							$text = $this->sanitizeForChat(is_array($item) ? ($item['text'] ?? '') : $item);
 							$confidence = is_array($item) ? $this->sanitizeForChat($item['confidence'] ?? 'low') : 'low';
-							if ($text !== '') $lines[] = "- ({$confidence}) {$text}";
+							if ($text !== '') {
+								$lines[] = "- ({$confidence}) {$text}";
+								$this->appendPcapSummaryActions($lines, $item, '  ');
+							}
 						}
 					}
 					if (!empty($data['analysis']['likely_next_checks'])) {
@@ -1909,7 +1941,10 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 						foreach (array_slice($data['analysis']['likely_next_checks'], 0, 3) as $item) {
 							$text = $this->sanitizeForChat(is_array($item) ? ($item['text'] ?? '') : $item);
 							$confidence = is_array($item) ? $this->sanitizeForChat($item['confidence'] ?? 'low') : 'low';
-							if ($text !== '') $lines[] = "- ({$confidence}) {$text}";
+							if ($text !== '') {
+								$lines[] = "- ({$confidence}) {$text}";
+								$this->appendPcapSummaryActions($lines, $item, '  ');
+							}
 						}
 					}
 					if (!empty($data['analysis']['confidence_notes'])) {
@@ -1917,7 +1952,10 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 						$lines[] = "**Confidence notes**";
 						foreach (array_slice($data['analysis']['confidence_notes'], 0, 3) as $item) {
 							$text = $this->sanitizeForChat(is_array($item) ? ($item['text'] ?? '') : $item);
-							if ($text !== '') $lines[] = "- {$text}";
+							if ($text !== '') {
+								$lines[] = "- {$text}";
+								$this->appendPcapSummaryActions($lines, $item, '  ');
+							}
 						}
 					}
 					if (!empty($data['analysis']['focus']['call_id']) && !empty($data['path'])) {
