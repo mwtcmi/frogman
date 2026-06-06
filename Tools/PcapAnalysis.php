@@ -1019,8 +1019,13 @@ class PcapAnalysis extends AbstractTool {
 			$status = 'rtp_not_negotiated';
 			if (!empty($matched)) {
 				$status = $this->hasReciprocalRtpDirections($matchedDirections) ? 'rtp_both_directions' : 'rtp_one_direction_only';
-			} elseif (($summary['outcome'] ?? null) === 'answered' && !empty($sdp['ports'])) {
-				$status = 'rtp_absent_despite_answer';
+			} elseif (!empty($sdp['ports'])) {
+				$status = 'rtp_not_seen_at_capture_point';
+				if (($summary['outcome'] ?? null) === 'answered') {
+					$status = 'rtp_absent_despite_answer';
+				} elseif (($summary['outcome'] ?? null) === 'cancelled') {
+					$status = 'rtp_not_seen_before_cancellation';
+				}
 				$confidence = 'low';
 			}
 			$rtcpSeen = $this->rtcpSeenForCall($rtcpStreams, $call, $sdp);
@@ -1320,6 +1325,8 @@ class PcapAnalysis extends AbstractTool {
 		if ($status === 'rtp_both_directions') return 'RTP seen in both captured directions.';
 		if ($status === 'rtp_one_direction_only') return 'RTP seen in only one captured direction.';
 		if ($status === 'rtp_absent_despite_answer') return 'No RTP seen at this capture point; direct media can bypass this capture point.';
+		if ($status === 'rtp_not_seen_before_cancellation') return 'No RTP seen at this capture point before cancellation.';
+		if ($status === 'rtp_not_seen_at_capture_point') return 'No RTP seen at this capture point despite negotiated media.';
 		return 'No negotiated RTP media was identified from SDP.';
 	}
 
