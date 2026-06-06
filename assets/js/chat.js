@@ -19,7 +19,6 @@ $(function() {
 	var sending = false;
 	var commandHistory = [];
 	var historyIndex = -1;
-	var LONG_BOT_MESSAGE_HEIGHT_PX = 400;
 
 	function escapeHtml(s) {
 		return $('<div>').text(s).html();
@@ -91,19 +90,14 @@ $(function() {
 		return state;
 	}
 
-	function finishBotMessage(message, smooth, state) {
+	function finishBotMessage(message, state) {
 		if (!message || !message.scrollIntoView) {
 			if (state) state.cleanup();
 			return;
 		}
 		afterLayout(function() {
 			if (!state || !state.cancelled) {
-				var height = message.getBoundingClientRect ? message.getBoundingClientRect().height : message.offsetHeight;
-				if (height >= LONG_BOT_MESSAGE_HEIGHT_PX) {
-					message.scrollIntoView({block: 'start', behavior: smooth ? 'smooth' : 'auto'});
-				} else {
-					$msgs.scrollTop($msgs[0].scrollHeight);
-				}
+				message.scrollIntoView({block: 'start', behavior: 'smooth'});
 			}
 			if (state) state.cleanup();
 		});
@@ -124,7 +118,7 @@ $(function() {
 		var pendingMermaid = mermaidNodes.length;
 		var finishMermaid = function() {
 			pendingMermaid--;
-			if (pendingMermaid === 0) finishBotMessage(newMessage, true, scrollState);
+			if (pendingMermaid === 0) finishBotMessage(newMessage, scrollState);
 		};
 		// Render any Mermaid diagrams
 		$msgs.find('.oc-mermaid').each(function() {
@@ -149,7 +143,7 @@ $(function() {
 			}
 		});
 		if (isBotMessage) {
-			if (pendingMermaid === 0) finishBotMessage(newMessage, false, scrollState);
+			if (pendingMermaid === 0) finishBotMessage(newMessage, scrollState);
 		} else {
 			$msgs.scrollTop($msgs[0].scrollHeight);
 		}
