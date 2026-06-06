@@ -963,7 +963,11 @@ class PcapAnalysis extends AbstractTool {
 			$hints[] = $this->diagnosticHint('cancelled_before_answer', 'CANCEL/487 was seen before answer; user cancellation or an upstream timeout are possible explanations.', 'medium', ['cancelled_before_answer']);
 		}
 		if ($outcome === 'failed') {
-			$hints[] = $this->diagnosticHint('failed_final_response', 'INVITE ended in a failure response; the final status and Reason header are the strongest evidence.', 'high', ['failed_final_response']);
+			$isInvite = isset($methods['INVITE']);
+			$failText = $isInvite
+				? 'INVITE ended in a failure response; the final status and Reason header are the strongest evidence.'
+				: 'Request ended in a failure response; the final status and Reason header are the strongest evidence.';
+			$hints[] = $this->diagnosticHint('failed_final_response', $failText, 'high', ['failed_final_response']);
 		}
 		if (isset($obs['invite_without_final_response_in_capture'])) {
 			$hints[] = $this->diagnosticHint('invite_without_final_response_in_capture', 'Capture has an INVITE but no final response; the capture may be one-sided, too short, or missing the answering path.', 'medium', ['invite_without_final_response_in_capture']);
