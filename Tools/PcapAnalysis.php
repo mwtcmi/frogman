@@ -26,9 +26,9 @@ class PcapAnalysis extends AbstractTool {
 			return 'Parameter "call_id" must be a non-empty string when supplied';
 		}
 		if (isset($params['summary_action'])) {
-			$allowedActions = ['simplify', 're_explain', 'show_evidence'];
+			$allowedActions = ['simplify', 'explain', 'evidence', 're_explain', 'show_evidence'];
 			$allowedSections = ['support_summary', 'likely_next_checks', 'confidence_notes', 'diagnostic_hints'];
-			if (!in_array($params['summary_action'], $allowedActions, true)) {
+			if (!in_array($this->normalizeSummaryAction($params['summary_action']), ['simplify', 'explain', 'evidence'], true)) {
 				return 'Parameter "summary_action" must be one of: ' . implode(', ', $allowedActions);
 			}
 			if (empty($params['section']) || !in_array($params['section'], $allowedSections, true)) {
@@ -78,6 +78,7 @@ class PcapAnalysis extends AbstractTool {
 		$summary = $this->summariseCapture($calls, $decoded);
 
 		if (isset($params['summary_action'])) {
+			$params['summary_action'] = $this->normalizeSummaryAction($params['summary_action']);
 			return $this->resolveSummaryAction($params, $path, $calls, $summary);
 		}
 
@@ -1679,7 +1680,42 @@ class PcapAnalysis extends AbstractTool {
 		];
 	}
 
+	private function normalizeSummaryAction($action) {
+		$action = strtolower(str_replace('-', '_', (string)$action));
+		if ($action === 're_explain') return 'explain';
+		if ($action === 'show_evidence') return 'evidence';
+		return $action;
+	}
+
 	private function resolveSummaryAction($params, $path, $calls, $analysis) {
+		if ((string)$params['item_id'] === 'block') {
+			$items = $this->findSummaryActionBlock($calls, $analysis, $params['section'], $params['call_index'] ?? null, $params['call_ref'] ?? null);
+			if (empty($items)) {
+				return [
+					'status' => 'not_found',
+					'mode' => 'summary_action',
+					'summary_action' => $params['summary_action'],
+					'section' => $params['section'],
+					'item_id' => $params['item_id'],
+					'message' => 'That PCAP summary block was not found in the analysis result.',
+				];
+			}
+			return [
+				'status' => 'ok',
+				'mode' => 'summary_action',
+				'path' => $path,
+				'summary_action' => $params['summary_action'],
+				'section' => $params['section'],
+				'item_id' => 'block',
+				'block' => true,
+				'call_id' => $params['call_id'] ?? null,
+				'call_index' => isset($params['call_index']) ? (int)$params['call_index'] : null,
+				'call_ref' => $params['call_ref'] ?? null,
+				'result' => $this->summaryBlockActionResult($params['summary_action'], $params['section'], $items),
+				'available_actions' => $this->summaryBlockActionAvailability($params['summary_action']),
+			];
+		}
+
 		$item = $this->findSummaryActionItem($calls, $analysis, $params['section'], $params['item_id'], $params['call_index'] ?? null, $params['call_ref'] ?? null);
 		if ($item === null) {
 			return [
@@ -1734,6 +1770,25 @@ class PcapAnalysis extends AbstractTool {
 		return $this->findSummaryItemById($analysis[$section] ?? [], $itemId);
 	}
 
+	private function findSummaryActionBlock($calls, $analysis, $section, $callIndex, $callRef) {
+		if ($section === 'diagnostic_hints') {
+			if ($callRef !== null) {
+				$callRef = strtolower((string)$callRef);
+				foreach ($calls as $call) {
+					if ($this->callRef($call['call_id'] ?? '') !== $callRef) continue;
+					return array_values($call['summary']['diagnostic_hints'] ?? []);
+				}
+				return [];
+			}
+			if ($callIndex !== null) {
+				$idx = (int)$callIndex;
+				return isset($calls[$idx]) ? array_values($calls[$idx]['summary']['diagnostic_hints'] ?? []) : [];
+			}
+			return [];
+		}
+		return array_values($analysis[$section] ?? []);
+	}
+
 	private function findSummaryItemById($items, $itemId) {
 		if (!is_array($items)) return null;
 		foreach ($items as $item) {
@@ -1750,26 +1805,100 @@ class PcapAnalysis extends AbstractTool {
 				'text' => $item['simplified'] ?? ($item['text'] ?? ''),
 			];
 		}
-		if ($action === 're_explain') {
+		if ($action === 'explain' || $action === 're_explain') {
 			return [
 				'kind' => 'text',
-				'title' => 'Re-Explain',
+				'title' => 'Explain',
 				'text' => $item['re_explained'] ?? ($item['text'] ?? ''),
 			];
 		}
 		return [
 			'kind' => 'evidence',
-			'title' => 'Show Evidence',
+			'title' => 'Evidence',
 			'items' => array_values($item['evidence_text'] ?? []),
 			'refs' => array_values($item['evidence_refs'] ?? ($item['evidence'] ?? [])),
 		];
 	}
 
+	private function summaryBlockActionResult($action, $section, $items) {
+		if ($action === 'simplify') {
+			return [
+				'kind' => 'text',
+				'title' => 'Simplify',
+				'text' => $this->summaryBlockSimplifyText($section, $items),
+			];
+		}
+		if ($action === 'explain') {
+			return [
+				'kind' => 'text',
+				'title' => 'Explain',
+				'text' => $this->summaryBlockExplainText($section, $items),
+			];
+		}
+
+		$evidence = [];
+		$refs = [];
+		foreach ($items as $item) {
+			if (!is_array($item)) continue;
+			foreach ($item['evidence_text'] ?? [] as $line) {
+				if ($line !== '') $evidence[] = $line;
+			}
+			foreach (($item['evidence_refs'] ?? ($item['evidence'] ?? [])) as $ref) {
+				if ($ref !== '') $refs[] = $ref;
+			}
+		}
+		return [
+			'kind' => 'evidence',
+			'title' => 'Evidence',
+			'items' => array_values(array_unique($evidence)),
+			'refs' => array_values(array_unique($refs)),
+		];
+	}
+
+	private function summaryBlockSimplifyText($section, $items) {
+		$lines = [];
+		foreach ($items as $item) {
+			if (!is_array($item)) continue;
+			$text = $item['simplified'] ?? ($item['text'] ?? '');
+			if ($text !== '') $lines[] = '- ' . $text;
+		}
+		return !empty($lines) ? implode("\n", $lines) : 'No simplified text is available for this block.';
+	}
+
+	private function summaryBlockExplainText($section, $items) {
+		$intro = [
+			'diagnostic_hints' => 'These hints describe the notable observations for this call. They are confidence-scoped and should be read together, not as independent proof of a single cause.',
+			'support_summary' => 'This support summary combines the strongest decoded signalling and media observations. It preserves confidence levels because the capture point may not see every path.',
+			'likely_next_checks' => 'These checks are practical follow-ups suggested by the decoded evidence. They are prioritised by what the capture actually supports, while avoiding claims beyond this PCAP.',
+			'confidence_notes' => 'These notes describe the limits of the analysis. They explain why absence, timing, reassembly, and capture placement can reduce certainty.',
+		];
+		$lines = [$intro[$section] ?? 'This block explains the decoded PCAP observations with confidence and scope preserved.'];
+		foreach ($items as $item) {
+			if (!is_array($item)) continue;
+			$text = $item['re_explained'] ?? ($item['text'] ?? '');
+			if ($text === '') continue;
+			$confidence = $item['confidence'] ?? null;
+			$prefix = $confidence ? '- Confidence ' . $confidence . ': ' : '- ';
+			$lines[] = $prefix . $text;
+		}
+		return implode("\n", $lines);
+	}
+
 	private function summaryActionAvailability($item, $currentAction) {
 		$actions = [];
 		if (!empty($item['simplified'])) $actions['simplify'] = 'Simplify';
-		if (!empty($item['re_explained'])) $actions['re_explain'] = 'Re-Explain';
-		if (!empty($item['evidence_text']) && is_array($item['evidence_text'])) $actions['show_evidence'] = 'Show Evidence';
+		if (!empty($item['re_explained'])) $actions['explain'] = 'Explain';
+		if (!empty($item['evidence_text']) && is_array($item['evidence_text'])) $actions['evidence'] = 'Evidence';
+		unset($actions[$currentAction]);
+		return $actions;
+	}
+
+	private function summaryBlockActionAvailability($currentAction) {
+		$actions = [
+			'simplify' => 'Simplify',
+			'explain' => 'Explain',
+			'evidence' => 'Evidence',
+		];
 		unset($actions[$currentAction]);
 		return $actions;
 	}

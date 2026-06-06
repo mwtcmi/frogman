@@ -1954,9 +1954,10 @@ class ChatParser {
 
 		// PcapAnalysis follow-up action chips. The command carries explicit
 		// re-run params so no PCAP state is stored in the chat session.
-		if (preg_match('/^pcap\s+action\s+(simplify|re-explain|re_explain|evidence|show-evidence|show_evidence)\s+([a-z_]+)\s+([a-z0-9_:-]+)(?:\s+call\s+([a-f0-9]{12}|\d+))?\s+path\s+(.+?\.(?:pcap|cap))(?:\s+call[_\s-]?id\s+(\S+))?\s*$/i', $msg, $m)) {
+		if (preg_match('/^pcap\s+action\s+(simplify|explain|re-explain|re_explain|evidence|show-evidence|show_evidence)\s+([a-z_]+)\s+([a-z0-9_:-]+)(?:\s+call\s+([a-f0-9]{12}|\d+))?\s+path\s+(.+?\.(?:pcap|cap))(?:\s+call[_\s-]?id\s+(\S+))?\s*$/i', $msg, $m)) {
 			$action = strtolower(str_replace('-', '_', $m[1]));
-			if ($action === 'evidence' || $action === 'show_evidence') $action = 'show_evidence';
+			if ($action === 're_explain') $action = 'explain';
+			if ($action === 'show_evidence') $action = 'evidence';
 			$params = [
 				'path' => trim($m[5]),
 				'summary_action' => $action,
