@@ -6,6 +6,10 @@ class PcapAnalysis extends AbstractTool {
 	const MAX_FILE_BYTES = 104857600; // 100 MiB
 	const MAX_PACKET_BYTES = 262144;
 	const MAX_TCP_STREAM_BYTES = 1048576; // 1 MiB per directional stream
+	const MAX_TCP_REASSEMBLY_BYTES = 8388608; // 8 MiB total TCP payload retained
+	const RTP_STRONG_TIMING_TOLERANCE_SECONDS = 2;
+	const RTP_LOOSE_TIMING_TOLERANCE_SECONDS = 6;
+	const RTP_ANSWERED_POST_SIGNALLING_TOLERANCE_SECONDS = 60;
 
 	public function name() { return 'fm_analyze_pcap'; }
 	public function description() { return 'Read-only SIP decoder for classic .pcap captures. Params: path (required), call_id (optional), max_messages (default 200, max 500), max_calls (default 25, max 100). Returns SIP ladders, call summaries, and agent-facing analysis grouped by Call-ID.'; }
@@ -51,6 +55,7 @@ class PcapAnalysis extends AbstractTool {
 		}
 
 		$calls = $this->groupByCallId($decoded['messages'], $maxCalls);
+		$this->attachRtpAnalysis($calls, $decoded);
 		$summary = $this->summariseCapture($calls, $decoded);
 
 		return [
@@ -60,6 +65,7 @@ class PcapAnalysis extends AbstractTool {
 			'linktype' => $decoded['linktype'],
 			'packet_count' => $decoded['packet_count'],
 			'sip_message_count' => count($decoded['messages']),
+			'unparsed_sip_message_count' => (int)($decoded['unparsed_sip_message_count'] ?? 0),
 			'call_count' => count($calls),
 			'truncated' => $decoded['truncated'],
 			'warnings' => $decoded['warnings'],
@@ -162,6 +168,11 @@ class PcapAnalysis extends AbstractTool {
 		$packetCount = 0;
 		$messages = [];
 		$tcpStreams = [];
+		$tcpReassemblyBytes = 0;
+		$tcpReassemblyCapHit = false;
+		$rtpStreams = [];
+		$rtcpStreams = [];
+		$unparsedSipMessages = 0;
 		$truncated = false;
 		$total = strlen($data);
 
@@ -193,6 +204,7 @@ class PcapAnalysis extends AbstractTool {
 			if ($decoded['transport'] === 'TCP') {
 				if ($decoded['payload'] === '') continue;
 				$key = $decoded['stream_key'];
+				$payloadLen = strlen($decoded['payload']);
 				if (!isset($tcpStreams[$key])) {
 					$tcpStreams[$key] = [
 						'src' => $decoded['src'],
@@ -204,11 +216,21 @@ class PcapAnalysis extends AbstractTool {
 						'first_epoch' => $tEpoch,
 					];
 				}
-				$tcpStreams[$key]['bytes'] += strlen($decoded['payload']);
-				if ($tcpStreams[$key]['bytes'] > self::MAX_TCP_STREAM_BYTES) {
+				if ($tcpStreams[$key]['bytes'] + $payloadLen > self::MAX_TCP_STREAM_BYTES) {
+					$tcpStreams[$key]['bytes'] += $payloadLen;
 					$warnings[] = "TCP stream {$key} exceeded reassembly safety cap";
 					continue;
 				}
+				if ($tcpReassemblyBytes + $payloadLen > self::MAX_TCP_REASSEMBLY_BYTES) {
+					if (!$tcpReassemblyCapHit) {
+						$mb = (int)(self::MAX_TCP_REASSEMBLY_BYTES / 1048576);
+						$warnings[] = "TCP reassembly exceeded global {$mb} MiB safety cap; additional TCP payloads skipped";
+						$tcpReassemblyCapHit = true;
+					}
+					continue;
+				}
+				$tcpStreams[$key]['bytes'] += $payloadLen;
+				$tcpReassemblyBytes += $payloadLen;
 				$tcpStreams[$key]['segments'][] = [
 					'seq' => $decoded['seq'],
 					'payload' => $decoded['payload'],
@@ -218,14 +240,24 @@ class PcapAnalysis extends AbstractTool {
 				continue;
 			}
 
-			foreach ($this->parseSipPayloads($decoded['payload']) as $msg) {
-				if ($filterCallId !== null && strcasecmp($msg['call_id'] ?? '', $filterCallId) !== 0) continue;
-				$msg['time'] = date('c', $tsSec);
-				$msg['t_epoch'] = $tEpoch;
-				$msg['src'] = $decoded['src'];
-				$msg['dst'] = $decoded['dst'];
-				$msg['transport'] = $decoded['transport'];
-				$messages[] = $msg;
+			$isMediaPacket = $decoded['transport'] === 'UDP' && $this->looksLikeRtpOrRtcp($decoded['payload']);
+			if ($isMediaPacket) {
+				$this->updateRtpOrRtcpCounters($rtpStreams, $rtcpStreams, $decoded, $tEpoch, $tsSec);
+				$parsed = ['messages' => [], 'unparsed' => 0, 'sip_like' => false];
+			} else {
+				$parsed = $this->parseSipPayloadsWithStats($decoded['payload']);
+				$unparsedSipMessages += $parsed['unparsed'];
+			}
+			if (!empty($parsed['sip_like'])) {
+				foreach ($parsed['messages'] as $msg) {
+					if ($filterCallId !== null && strcasecmp($msg['call_id'] ?? '', $filterCallId) !== 0) continue;
+					$msg['time'] = date('c', $tsSec);
+					$msg['t_epoch'] = $tEpoch;
+					$msg['src'] = $decoded['src'];
+					$msg['dst'] = $decoded['dst'];
+					$msg['transport'] = $decoded['transport'];
+					$messages[] = $msg;
+				}
 			}
 
 			if (count($messages) >= $maxMessages) {
@@ -236,7 +268,9 @@ class PcapAnalysis extends AbstractTool {
 		}
 
 		if (!empty($tcpStreams)) {
-			foreach ($this->parseTcpStreams($tcpStreams, $filterCallId, $warnings) as $msg) {
+			$tcpParsed = $this->parseTcpStreams($tcpStreams, $filterCallId, $warnings);
+			$unparsedSipMessages += $tcpParsed['unparsed'];
+			foreach ($tcpParsed['messages'] as $msg) {
 				$messages[] = $msg;
 				if (count($messages) >= $maxMessages) {
 					$truncated = true;
@@ -254,6 +288,9 @@ class PcapAnalysis extends AbstractTool {
 			'linktype' => $linktype,
 			'packet_count' => $packetCount,
 			'messages' => $messages,
+			'unparsed_sip_message_count' => $unparsedSipMessages,
+			'rtp_streams' => array_values($rtpStreams),
+			'rtcp_streams' => array_values($rtcpStreams),
 			'truncated' => $truncated,
 			'warnings' => array_values(array_unique($warnings)),
 		];
@@ -314,6 +351,10 @@ class PcapAnalysis extends AbstractTool {
 				'transport' => 'UDP',
 				'src' => "{$srcIp}:{$srcPort}",
 				'dst' => "{$dstIp}:{$dstPort}",
+				'src_ip' => $srcIp,
+				'dst_ip' => $dstIp,
+				'src_port' => $srcPort,
+				'dst_port' => $dstPort,
 				'payload' => $payload,
 			];
 		}
@@ -329,6 +370,10 @@ class PcapAnalysis extends AbstractTool {
 				'transport' => 'TCP',
 				'src' => "{$srcIp}:{$srcPort}",
 				'dst' => "{$dstIp}:{$dstPort}",
+				'src_ip' => $srcIp,
+				'dst_ip' => $dstIp,
+				'src_port' => $srcPort,
+				'dst_port' => $dstPort,
 				'stream_key' => "{$srcIp}:{$srcPort}>{$dstIp}:{$dstPort}",
 				'seq' => $this->u32($ip, $ihl + 4, false),
 				'payload' => $payload,
@@ -367,6 +412,10 @@ class PcapAnalysis extends AbstractTool {
 				'transport' => 'UDP',
 				'src' => "[{$srcIp}]:{$srcPort}",
 				'dst' => "[{$dstIp}]:{$dstPort}",
+				'src_ip' => $srcIp,
+				'dst_ip' => $dstIp,
+				'src_port' => $srcPort,
+				'dst_port' => $dstPort,
 				'payload' => $payload,
 			];
 		}
@@ -382,6 +431,10 @@ class PcapAnalysis extends AbstractTool {
 				'transport' => 'TCP',
 				'src' => "[{$srcIp}]:{$srcPort}",
 				'dst' => "[{$dstIp}]:{$dstPort}",
+				'src_ip' => $srcIp,
+				'dst_ip' => $dstIp,
+				'src_port' => $srcPort,
+				'dst_port' => $dstPort,
 				'stream_key' => "[{$srcIp}]:{$srcPort}>[{$dstIp}]:{$dstPort}",
 				'seq' => $this->u32($ip, $offset + 4, false),
 				'payload' => $payload,
@@ -393,6 +446,7 @@ class PcapAnalysis extends AbstractTool {
 
 	private function parseTcpStreams($streams, $filterCallId, &$warnings) {
 		$messages = [];
+		$unparsed = 0;
 		foreach ($streams as $key => $stream) {
 			usort($stream['segments'], function($a, $b) {
 				if ($a['seq'] == $b['seq']) return 0;
@@ -412,8 +466,9 @@ class PcapAnalysis extends AbstractTool {
 					continue 2;
 				}
 			}
-			$parsed = $this->parseSipPayloads($payload);
-			foreach ($parsed as $msg) {
+			$parsed = $this->parseSipPayloadsWithStats($payload);
+			$unparsed += $parsed['unparsed'];
+			foreach ($parsed['messages'] as $msg) {
 				if ($filterCallId !== null && strcasecmp($msg['call_id'] ?? '', $filterCallId) !== 0) continue;
 				$msg['time'] = $firstTime ?: date('c', 0);
 				$msg['t_epoch'] = $firstEpoch ?: 0;
@@ -424,21 +479,31 @@ class PcapAnalysis extends AbstractTool {
 				$messages[] = $msg;
 			}
 		}
-		return $messages;
+		return ['messages' => $messages, 'unparsed' => $unparsed];
 	}
 
 	private function parseSipPayloads($payload) {
-		if ($payload === '') return [];
-		if (!$this->looksLikeSip($payload)) return [];
+		return $this->parseSipPayloadsWithStats($payload)['messages'];
+	}
+
+	private function parseSipPayloadsWithStats($payload) {
+		if ($payload === '') return ['messages' => [], 'unparsed' => 0, 'sip_like' => false];
+		if (!$this->looksLikeSip($payload)) return ['messages' => [], 'unparsed' => 0, 'sip_like' => false];
 
 		$text = preg_replace('/[^\x09\x0A\x0D\x20-\x7E]/', '', $payload);
 		$chunks = preg_split('/(?=SIP\/2\.0\s+\d{3}\b|(?:INVITE|ACK|BYE|CANCEL|REGISTER|OPTIONS|INFO|UPDATE|PRACK|REFER|NOTIFY|SUBSCRIBE)\s+\S+\s+SIP\/2\.0)/', $text, -1, PREG_SPLIT_NO_EMPTY);
 		$messages = [];
+		$unparsed = 0;
 		foreach ($chunks as $chunk) {
 			$msg = $this->parseSipMessageText($chunk);
-			if ($msg !== null) $messages[] = $msg;
+			if ($msg !== null) {
+				$msg['_fingerprint'] = md5($chunk);
+				$messages[] = $msg;
+			} elseif (trim($chunk) !== '') {
+				$unparsed++;
+			}
 		}
-		return $messages;
+		return ['messages' => $messages, 'unparsed' => $unparsed, 'sip_like' => true];
 	}
 
 	private function parseSipMessageText($text) {
@@ -454,7 +519,7 @@ class PcapAnalysis extends AbstractTool {
 		if (!$isRequest && !$isResponse) return null;
 
 		$headers = $this->parseHeaders($lines);
-		$callId = $headers['call-id'] ?? $headers['i'] ?? null;
+		$callId = $headers['call-id'] ?? null;
 		if ($callId === null || trim($callId) === '') return null;
 
 		$msg = [
@@ -462,8 +527,8 @@ class PcapAnalysis extends AbstractTool {
 			'line' => $first,
 			'call_id' => trim($callId),
 			'cseq' => isset($headers['cseq']) ? trim($headers['cseq']) : null,
-			'from' => isset($headers['from']) ? trim($headers['from']) : (isset($headers['f']) ? trim($headers['f']) : null),
-			'to' => isset($headers['to']) ? trim($headers['to']) : (isset($headers['t']) ? trim($headers['t']) : null),
+			'from' => isset($headers['from']) ? trim($headers['from']) : null,
+			'to' => isset($headers['to']) ? trim($headers['to']) : null,
 			'reason' => isset($headers['reason']) ? trim($headers['reason']) : $this->statusReason($first),
 			'sdp' => $this->summariseSdp($sdp),
 		];
@@ -493,8 +558,8 @@ class PcapAnalysis extends AbstractTool {
 				continue;
 			}
 			if (!preg_match('/^([A-Za-z][A-Za-z0-9_-]*):\s*(.*)$/', $line, $m)) continue;
-			$name = strtolower($m[1]);
-			if (!in_array($name, ['call-id', 'i', 'cseq', 'from', 'f', 'to', 't', 'reason'], true)) {
+			$name = $this->canonicalSipHeaderName(strtolower($m[1]));
+			if (!in_array($name, ['call-id', 'cseq', 'from', 'to', 'reason', 'content-type', 'content-length', 'contact', 'via'], true)) {
 				$current = null;
 				continue;
 			}
@@ -504,15 +569,149 @@ class PcapAnalysis extends AbstractTool {
 		return $headers;
 	}
 
+	private function canonicalSipHeaderName($name) {
+		$map = [
+			'i' => 'call-id',
+			'f' => 'from',
+			't' => 'to',
+			'm' => 'contact',
+			'v' => 'via',
+			'c' => 'content-type',
+			'l' => 'content-length',
+		];
+		return $map[$name] ?? $name;
+	}
+
+	private function looksLikeRtpOrRtcp($payload) {
+		if (strlen((string)$payload) < 8) return false;
+		$version = ord($payload[0]) >> 6;
+		if ($version !== 2) return false;
+		$secondByte = ord($payload[1]);
+		if ($secondByte >= 200 && $secondByte <= 204) return true;
+		$payloadType = $secondByte & 0x7f;
+		if ($payloadType >= 64 && $payloadType <= 72) return false;
+		if (strlen($payload) < 12) return false;
+		$cc = ord($payload[0]) & 0x0f;
+		$headerLen = 12 + ($cc * 4);
+		return strlen($payload) >= $headerLen;
+	}
+
+	private function updateRtpOrRtcpCounters(&$rtpStreams, &$rtcpStreams, $decoded, $tEpoch, $tsSec) {
+		$payload = $decoded['payload'] ?? '';
+		if (!$this->looksLikeRtpOrRtcp($payload)) return;
+		$secondByte = ord($payload[1]);
+		if ($secondByte >= 200 && $secondByte <= 204) {
+			$key = ($decoded['src'] ?? '') . '>' . ($decoded['dst'] ?? '');
+			if (!isset($rtcpStreams[$key])) {
+				$rtcpStreams[$key] = [
+					'src' => $decoded['src'] ?? '',
+					'dst' => $decoded['dst'] ?? '',
+					'src_ip' => $decoded['src_ip'] ?? '',
+					'dst_ip' => $decoded['dst_ip'] ?? '',
+					'src_port' => $decoded['src_port'] ?? null,
+					'dst_port' => $decoded['dst_port'] ?? null,
+					'packet_count' => 0,
+					'packet_types' => [],
+					'first_time' => date('c', $tsSec),
+					'last_time' => date('c', $tsSec),
+					'first_epoch' => $tEpoch,
+					'last_epoch' => $tEpoch,
+				];
+			}
+			$rtcpStreams[$key]['packet_count']++;
+			$rtcpStreams[$key]['packet_types'][$secondByte] = true;
+			$rtcpStreams[$key]['last_time'] = date('c', $tsSec);
+			$rtcpStreams[$key]['last_epoch'] = $tEpoch;
+			return;
+		}
+		$packetType = $secondByte & 0x7f;
+		if ($packetType >= 64 && $packetType <= 72) return;
+		if (strlen($payload) < 12) return;
+		$cc = ord($payload[0]) & 0x0f;
+		$headerLen = 12 + ($cc * 4);
+		if (strlen($payload) < $headerLen) return;
+		$payloadType = ord($payload[1]) & 0x7f;
+		$seq = $this->u16($payload, 2, false);
+		$ssrc = sprintf('%u', $this->u32($payload, 8, false));
+		$key = ($decoded['src'] ?? '') . '>' . ($decoded['dst'] ?? '');
+		if (!isset($rtpStreams[$key])) {
+			$rtpStreams[$key] = [
+				'src' => $decoded['src'] ?? '',
+				'dst' => $decoded['dst'] ?? '',
+				'src_ip' => $decoded['src_ip'] ?? '',
+				'dst_ip' => $decoded['dst_ip'] ?? '',
+				'src_port' => $decoded['src_port'] ?? null,
+				'dst_port' => $decoded['dst_port'] ?? null,
+				'packet_count' => 0,
+				'payload_types' => [],
+				'ssrcs' => [],
+				'first_time' => date('c', $tsSec),
+				'last_time' => date('c', $tsSec),
+				'first_epoch' => $tEpoch,
+				'last_epoch' => $tEpoch,
+				'per_ssrc' => [],
+			];
+		}
+		$stream =& $rtpStreams[$key];
+		$stream['packet_count']++;
+		$stream['payload_types'][$payloadType] = true;
+		$stream['ssrcs'][$ssrc] = true;
+		$stream['last_time'] = date('c', $tsSec);
+		$stream['last_epoch'] = $tEpoch;
+		if (!isset($stream['per_ssrc'][$ssrc])) {
+			$stream['per_ssrc'][$ssrc] = [
+				'packet_count' => 0,
+				'lowest_sequence' => $seq,
+				'highest_sequence' => $seq,
+				'last_sequence' => $seq,
+				'sequence_gaps' => 0,
+				'sequence_wrap_seen' => false,
+				'sequence_reorder_seen' => false,
+			];
+		}
+		$ssrcStats =& $stream['per_ssrc'][$ssrc];
+		$ssrcStats['packet_count']++;
+		$lastSeq = (int)$ssrcStats['last_sequence'];
+		if ($seq < $lastSeq) {
+			if ($lastSeq === 65535 && $seq === 0) {
+				$ssrcStats['sequence_wrap_seen'] = true;
+			} else {
+				$ssrcStats['sequence_reorder_seen'] = true;
+			}
+		} elseif ($seq > $lastSeq) {
+			$gap = $seq - $ssrcStats['last_sequence'] - 1;
+			if ($gap > 0 && $gap < 30000) $ssrcStats['sequence_gaps'] += $gap;
+		}
+		if ($seq < $ssrcStats['lowest_sequence']) $ssrcStats['lowest_sequence'] = $seq;
+		if ($seq > $ssrcStats['highest_sequence']) $ssrcStats['highest_sequence'] = $seq;
+		$ssrcStats['last_sequence'] = $seq;
+		unset($ssrcStats, $stream);
+	}
+
 	private function summariseSdp($sdp) {
 		if (trim($sdp) === '') return null;
-		$out = ['connection' => null, 'media' => []];
+		$out = ['connection' => null, 'media' => [], 'media_details' => [], 'rtpmap' => []];
+		$currentMedia = null;
 		foreach (preg_split('/\r\n|\n|\r/', $sdp) as $line) {
 			$line = trim($line);
 			if (strpos($line, 'c=') === 0 && $out['connection'] === null) {
 				$out['connection'] = substr($line, 2);
 			} elseif (strpos($line, 'm=') === 0) {
-				$out['media'][] = substr($line, 2);
+				$mline = substr($line, 2);
+				$out['media'][] = $mline;
+				$parts = preg_split('/\s+/', $mline);
+				$currentMedia = count($out['media_details']);
+				$out['media_details'][] = [
+					'type' => $parts[0] ?? null,
+					'port' => isset($parts[1]) ? (int)$parts[1] : null,
+					'protocol' => $parts[2] ?? null,
+					'payload_types' => array_slice($parts, 3),
+					'connection' => $out['connection'],
+				];
+			} elseif (strpos($line, 'a=rtpmap:') === 0 && preg_match('/^a=rtpmap:(\d+)\s+([^\/\s]+)/i', $line, $m)) {
+				$out['rtpmap'][(int)$m[1]] = $m[2];
+			} elseif (strpos($line, 'c=') === 0 && $currentMedia !== null) {
+				$out['media_details'][$currentMedia]['connection'] = substr($line, 2);
 			}
 		}
 		if ($out['connection'] === null && empty($out['media'])) return null;
@@ -559,7 +758,7 @@ class PcapAnalysis extends AbstractTool {
 			$base = $calls[$id]['_first_epoch'];
 			$msg['t_ms'] = (int)round(($msg['t_epoch'] - $base) * 1000);
 			$this->trackMessageShape($calls[$id], $msg);
-			unset($msg['t_epoch'], $msg['call_id']);
+			unset($msg['t_epoch'], $msg['call_id'], $msg['_fingerprint']);
 			$calls[$id]['messages'][] = $msg;
 			$calls[$id]['message_count']++;
 			$calls[$id]['last_time'] = $msg['time'];
@@ -633,17 +832,19 @@ class PcapAnalysis extends AbstractTool {
 	}
 
 	private function trackMessageShape(&$call, $msg) {
-		$keyParts = [
+		$isProvisionalResponse = ($msg['type'] ?? '') === 'response' && isset($msg['status_code']) && (int)$msg['status_code'] < 200;
+		$key = implode('|', [
 			$msg['src'] ?? '',
 			$msg['dst'] ?? '',
+			$msg['transport'] ?? '',
 			$msg['line'] ?? '',
 			$msg['cseq'] ?? '',
-		];
-		$key = md5(implode('|', $keyParts));
-		if (isset($call['_seen_messages'][$key])) {
+			$msg['_fingerprint'] ?? '',
+		]);
+		if (!$isProvisionalResponse && !empty($msg['_fingerprint']) && isset($call['_seen_messages'][$key])) {
 			$call['summary']['retransmissions']++;
 		}
-		$call['_seen_messages'][$key] = true;
+		if (!empty($msg['_fingerprint'])) $call['_seen_messages'][$key] = true;
 
 		if (!empty($call['messages'])) {
 			$prev = end($call['messages']);
@@ -727,37 +928,399 @@ class PcapAnalysis extends AbstractTool {
 		$hints = [];
 		$obs = array_flip($call['summary']['observations']);
 		$outcome = $call['summary']['outcome'];
+		$cleanAnswered = $this->isCleanAnsweredCall($call);
 		if ($outcome === 'answered') {
-			$hints[] = 'INVITE reached a 2xx final response; inspect RTP/media separately if audio was bad.';
+			$hints[] = $this->diagnosticHint('answered_invite', 'INVITE reached a 2xx final response; SIP signalling evidence supports an answered call.', 'high', ['answered_invite']);
 		}
 		if ($outcome === 'busy') {
-			$hints[] = 'Remote or downstream endpoint returned busy; signalling itself completed with a busy final response.';
+			$hints[] = $this->diagnosticHint('busy_response', 'A 486/600 busy response was seen; the destination or downstream path appears busy.', 'high', ['busy_response']);
 		}
 		if ($outcome === 'cancelled') {
-			$hints[] = 'Call was cancelled before answer; compare CANCEL timing with user action or upstream timeout.';
+			$hints[] = $this->diagnosticHint('cancelled_before_answer', 'CANCEL/487 was seen before answer; user cancellation or an upstream timeout are possible explanations.', 'medium', ['cancelled_before_answer']);
 		}
 		if ($outcome === 'failed') {
-			$hints[] = 'INVITE ended in a failure response; check the final status and Reason header first.';
+			$hints[] = $this->diagnosticHint('failed_final_response', 'INVITE ended in a failure response; the final status and Reason header are the strongest evidence.', 'high', ['failed_final_response']);
 		}
 		if (isset($obs['invite_without_final_response_in_capture'])) {
-			$hints[] = 'Capture has an INVITE but no final response; capture may be one-sided, too short, or missing the answering path.';
+			$hints[] = $this->diagnosticHint('invite_without_final_response_in_capture', 'Capture has an INVITE but no final response; the capture may be one-sided, too short, or missing the answering path.', 'medium', ['invite_without_final_response_in_capture']);
 		}
 		if (isset($obs['answered_without_ack_seen'])) {
-			$hints[] = '2xx response is present but ACK is missing in the capture; possible packet loss, asymmetric capture, or ACK routed elsewhere.';
+			$hints[] = $this->diagnosticHint('answered_without_ack_seen', '2xx response is present but ACK is missing in the capture; packet loss, asymmetric capture, or ACK routed elsewhere are possible.', 'medium', ['answered_without_ack_seen']);
 		}
-		if (isset($obs['retransmissions_seen'])) {
-			$hints[] = 'Repeated identical SIP messages were seen; this often points at packet loss, no response, or an unreachable peer.';
+		if (isset($obs['retransmissions_seen']) && !$cleanAnswered) {
+			$confidence = (($call['summary']['retransmissions'] ?? 0) >= 3 && $outcome !== 'answered') ? 'medium' : 'low';
+			$hints[] = $this->diagnosticHint('retransmissions_seen', 'Byte-identical non-provisional SIP messages were repeated; packet loss, delayed response, or a peer retry are possible, but this is not proof of the cause.', $confidence, ['retransmissions_seen']);
 		}
 		if (isset($obs['large_signalling_gap'])) {
-			$hints[] = 'There is a multi-second signalling gap; check timers, DNS, authentication challenge handling, and upstream response time.';
+			$text = 'A multi-second signalling gap was measured; after provisional response this is commonly ring time or human answer delay, while timer, DNS, auth, or upstream delay remain possible.';
+			$confidence = 'low';
+			if ($outcome === 'failed' || isset($obs['invite_without_final_response_in_capture'])) {
+				$text = 'A multi-second signalling gap occurred before a failure or before a final response was captured; timeout, routing, DNS, auth, or upstream response delay are possible.';
+				$confidence = 'medium';
+			}
+			if (!$cleanAnswered) $hints[] = $this->diagnosticHint('large_signalling_gap', $text, $confidence, ['large_signalling_gap']);
 		}
 		if (isset($obs['private_sdp_connection_address'])) {
-			$hints[] = 'SDP advertises a private connection address; if either side is remote, NAT/media configuration is suspect.';
+			$hints[] = $this->diagnosticHint('private_sdp_connection_address', 'SDP advertises a private connection address; if either side is remote, NAT or media-address configuration could be relevant.', 'medium', ['private_sdp_connection_address', 'sdp_present']);
 		}
-		if (empty($hints)) {
-			$hints[] = 'No obvious signalling fault flagged from SIP headers alone.';
+		if (isset($obs['rtp_one_direction_only'])) {
+			$hints[] = $this->diagnosticHint('rtp_one_direction_only', 'RTP was seen in only one captured direction; media visibility asymmetry is possible, but this does not prove what either endpoint heard.', $call['summary']['rtp']['confidence'] ?? 'medium', ['rtp_one_direction_only']);
+		}
+		if (isset($obs['rtp_absent_despite_answer'])) {
+			$hints[] = $this->diagnosticHint('rtp_absent_despite_answer', 'No RTP seen at this capture point for an answered call that negotiated media; direct endpoint-to-endpoint media bypassing the PBX is a common benign explanation.', 'low', ['rtp_absent_despite_answer', 'sdp_present']);
+		}
+		if (isset($obs['rtp_sequence_gaps'])) {
+			$hints[] = $this->diagnosticHint('rtp_sequence_gaps', 'RTP sequence gaps were estimated from captured packets; possible loss, but capture-point loss and real network loss cannot be distinguished from this tap alone.', 'medium', ['rtp_sequence_gaps']);
+		}
+		if (isset($obs['codec_mismatch_vs_sdp'])) {
+			$hints[] = $this->diagnosticHint('codec_mismatch_vs_sdp', 'Observed RTP payload types differ from SDP expectations; this is low-to-medium confidence because dynamic payload types are scoped by SDP and can be reused benignly.', 'low', ['codec_mismatch_vs_sdp', 'sdp_present']);
 		}
 		return $hints;
+	}
+
+	private function diagnosticHint($id, $text, $confidence, $observations) {
+		return [
+			'id' => $id,
+			'text' => $text,
+			'confidence' => $confidence,
+			'observations' => array_values($observations),
+		];
+	}
+
+	private function isCleanAnsweredCall($call) {
+		$summary = $call['summary'] ?? [];
+		if (($summary['outcome'] ?? null) !== 'answered') return false;
+		$methods = array_flip($summary['methods'] ?? []);
+		if (!isset($methods['BYE'])) return false;
+		$reason = $summary['release_reason'] ?? '';
+		if ($reason === '') return true;
+		return (bool)preg_match('/(?:cause\s*=\s*16|\b16\b|normal call clearing)/i', $reason);
+	}
+
+	private function attachRtpAnalysis(&$calls, $decoded) {
+		$rtpStreams = $decoded['rtp_streams'] ?? [];
+		$rtcpStreams = $decoded['rtcp_streams'] ?? [];
+		foreach ($calls as &$call) {
+			$summary =& $call['summary'];
+			$sdp = $this->extractSdpMediaPlan($summary['media'] ?? []);
+			$matched = [];
+			$matchedDirections = [];
+			$confidence = 'high';
+			foreach ($rtpStreams as $stream) {
+				$match = $this->matchRtpStreamToCall($stream, $call, $sdp);
+				if ($match === null) continue;
+				if ($match['confidence'] !== 'high') $confidence = 'medium';
+				$matchedDirections[] = [
+					'src_ip' => $stream['src_ip'] ?? '',
+					'dst_ip' => $stream['dst_ip'] ?? '',
+				];
+				$matched[] = $this->summariseRtpStream($stream, $sdp, $match);
+			}
+			$status = 'rtp_not_negotiated';
+			if (!empty($matched)) {
+				$status = $this->hasReciprocalRtpDirections($matchedDirections) ? 'rtp_both_directions' : 'rtp_one_direction_only';
+			} elseif (($summary['outcome'] ?? null) === 'answered' && !empty($sdp['ports'])) {
+				$status = 'rtp_absent_despite_answer';
+				$confidence = 'low';
+			}
+			$rtcpSeen = $this->rtcpSeenForCall($rtcpStreams, $call, $sdp);
+			$sequenceGapPercent = $this->maxRtpLossEstimate($matched);
+			$sequenceNotes = $this->rtpSequenceNotes($matched);
+			$codecMismatch = $this->hasCodecMismatch($matched, $sdp);
+			$summary['rtp'] = [
+				'status' => $status,
+				'confidence' => $confidence,
+				'description' => $this->rtpDescription($status),
+				'negotiated_media_ports' => array_values($sdp['ports']),
+				'streams' => $matched,
+				'rtcp_seen' => $rtcpSeen,
+				'sequence_gap_estimate_percent' => $sequenceGapPercent,
+				'sequence_notes' => $sequenceNotes,
+				'codec_mismatch_vs_sdp' => $codecMismatch,
+			];
+			if ($status === 'rtp_both_directions' || $status === 'rtp_one_direction_only' || $status === 'rtp_absent_despite_answer') {
+				$summary['observations'][] = $status;
+			}
+			if ($rtcpSeen) $summary['observations'][] = 'rtcp_seen';
+			if ($sequenceGapPercent !== null && $sequenceGapPercent > 0) $summary['observations'][] = 'rtp_sequence_gaps';
+			if ($codecMismatch) $summary['observations'][] = 'codec_mismatch_vs_sdp';
+			$summary['observations'] = array_values(array_unique($summary['observations']));
+			$summary['diagnostic_hints'] = $this->deriveDiagnosticHints($call);
+			unset($summary);
+		}
+		unset($call);
+	}
+
+	private function extractSdpMediaPlan($mediaBlocks) {
+		$out = ['ports' => [], 'payload_types' => [], 'rtpmap' => [], 'connection_ips' => []];
+		foreach ($mediaBlocks as $media) {
+			$this->addSdpConnectionIp($out, $media['connection'] ?? null);
+			foreach ($media['media_details'] ?? [] as $detail) {
+				if (($detail['type'] ?? null) !== 'audio') continue;
+				$this->addSdpConnectionIp($out, $detail['connection'] ?? null);
+				$port = (int)($detail['port'] ?? 0);
+				if ($port > 0) $out['ports'][$port] = $port;
+				foreach ($detail['payload_types'] ?? [] as $pt) {
+					if (is_numeric($pt)) $out['payload_types'][(int)$pt] = true;
+				}
+			}
+			foreach ($media['rtpmap'] ?? [] as $pt => $codec) {
+				$out['rtpmap'][(int)$pt] = $codec;
+			}
+		}
+		return $out;
+	}
+
+	private function addSdpConnectionIp(&$sdp, $connection) {
+		if (!is_string($connection) || $connection === '') return;
+		if (!preg_match('/\bIP[46]\s+([^\s]+)/i', $connection, $m)) return;
+		$ip = trim($m[1], '[]');
+		if ($ip !== '') $sdp['connection_ips'][$ip] = true;
+	}
+
+	private function matchRtpStreamToCall($stream, $call, $sdp) {
+		$timing = $this->rtpTimingCorrelation($stream, $call);
+		if ($timing === null) return null;
+
+		$srcPort = (int)($stream['src_port'] ?? 0);
+		$dstPort = (int)($stream['dst_port'] ?? 0);
+		$ipCompatible = $this->rtpIpCompatibleWithCall($stream, $call, $sdp);
+		if (isset($sdp['ports'][$srcPort]) || isset($sdp['ports'][$dstPort])) {
+			if (!$ipCompatible) return null;
+			return [
+				'confidence' => $this->combineCorrelationConfidence('high', $timing['confidence']),
+				'basis' => 'sdp_media_port+' . $timing['basis'],
+				'timing' => $timing,
+			];
+		}
+		if (empty($sdp['ports'])) return null;
+		if (!$ipCompatible) return null;
+		foreach ($sdp['ports'] as $port) {
+			if (abs($srcPort - $port) <= 10 || abs($dstPort - $port) <= 10) {
+				return [
+					'confidence' => $this->combineCorrelationConfidence('medium', $timing['confidence']),
+					'basis' => 'near_sdp_media_port+' . $timing['basis'],
+					'timing' => $timing,
+				];
+			}
+		}
+		return null;
+	}
+
+	private function rtpIpCompatibleWithCall($stream, $call, $sdp) {
+		$srcIp = $stream['src_ip'] ?? '';
+		$dstIp = $stream['dst_ip'] ?? '';
+		$endpointIps = $this->callEndpointIps($call);
+		if ($srcIp !== '' && isset($endpointIps[$srcIp])) return true;
+		if ($dstIp !== '' && isset($endpointIps[$dstIp])) return true;
+		$connectionIps = $sdp['connection_ips'] ?? [];
+		if ($srcIp !== '' && isset($connectionIps[$srcIp])) return true;
+		if ($dstIp !== '' && isset($connectionIps[$dstIp])) return true;
+		return false;
+	}
+
+	private function hasReciprocalRtpDirections($streams) {
+		$seen = [];
+		foreach ($streams as $stream) {
+			$srcIp = $stream['src_ip'] ?? '';
+			$dstIp = $stream['dst_ip'] ?? '';
+			if ($srcIp === '' || $dstIp === '') continue;
+			if (isset($seen[$dstIp . '>' . $srcIp])) return true;
+			$seen[$srcIp . '>' . $dstIp] = true;
+		}
+		return false;
+	}
+
+	private function rtpTimingCorrelation($stream, $call) {
+		$streamStart = $this->streamTimeEpoch($stream, 'first');
+		$streamEnd = $this->streamTimeEpoch($stream, 'last');
+		$callStart = $this->timeStringEpoch($call['first_time'] ?? null);
+		$callEnd = $this->timeStringEpoch($call['last_time'] ?? null);
+		if ($streamStart === null || $streamEnd === null || $callStart === null || $callEnd === null) {
+			return ['confidence' => 'medium', 'basis' => 'timing_unavailable'];
+		}
+		if ($streamEnd < $streamStart) {
+			$tmp = $streamStart;
+			$streamStart = $streamEnd;
+			$streamEnd = $tmp;
+		}
+		if ($callEnd < $callStart) {
+			$tmp = $callStart;
+			$callStart = $callEnd;
+			$callEnd = $tmp;
+		}
+
+		$strict = self::RTP_STRONG_TIMING_TOLERANCE_SECONDS;
+		if ($streamEnd >= ($callStart - $strict) && $streamStart <= ($callEnd + $strict)) {
+			return [
+				'confidence' => 'high',
+				'basis' => 'time_overlap',
+				'call_window' => ['first_time' => $call['first_time'] ?? null, 'last_time' => $call['last_time'] ?? null],
+				'stream_window' => ['first_time' => $stream['first_time'] ?? null, 'last_time' => $stream['last_time'] ?? null],
+				'tolerance_seconds' => $strict,
+			];
+		}
+
+		$loosePre = self::RTP_LOOSE_TIMING_TOLERANCE_SECONDS;
+		$loosePost = (($call['summary']['outcome'] ?? null) === 'answered')
+			? self::RTP_ANSWERED_POST_SIGNALLING_TOLERANCE_SECONDS
+			: self::RTP_LOOSE_TIMING_TOLERANCE_SECONDS;
+		if ($streamEnd >= ($callStart - $loosePre) && $streamStart <= ($callEnd + $loosePost)) {
+			return [
+				'confidence' => 'medium',
+				'basis' => 'loose_time_compatible',
+				'call_window' => ['first_time' => $call['first_time'] ?? null, 'last_time' => $call['last_time'] ?? null],
+				'stream_window' => ['first_time' => $stream['first_time'] ?? null, 'last_time' => $stream['last_time'] ?? null],
+				'tolerance_seconds' => max($loosePre, $loosePost),
+			];
+		}
+
+		return null;
+	}
+
+	private function combineCorrelationConfidence($a, $b) {
+		$rank = ['low' => 0, 'medium' => 1, 'high' => 2];
+		$ar = $rank[$a] ?? 1;
+		$br = $rank[$b] ?? 1;
+		return ($ar <= $br) ? $a : $b;
+	}
+
+	private function streamTimeEpoch($stream, $which) {
+		$key = $which === 'last' ? 'last_epoch' : 'first_epoch';
+		if (isset($stream[$key]) && is_numeric($stream[$key])) return (float)$stream[$key];
+		$timeKey = $which === 'last' ? 'last_time' : 'first_time';
+		return $this->timeStringEpoch($stream[$timeKey] ?? null);
+	}
+
+	private function timeStringEpoch($time) {
+		if ($time === null || $time === '') return null;
+		$epoch = strtotime((string)$time);
+		return $epoch === false ? null : (float)$epoch;
+	}
+
+	private function callEndpointIps($call) {
+		$out = [];
+		foreach ($call['summary']['endpoints'] ?? [] as $endpoint) {
+			$addr = $endpoint['address'] ?? '';
+			if (preg_match('/^\[([^\]]+)\]:\d+$/', $addr, $m) || preg_match('/^([^:]+):\d+$/', $addr, $m)) {
+				$out[$m[1]] = true;
+			}
+		}
+		return $out;
+	}
+
+	private function summariseRtpStream($stream, $sdp, $match) {
+		$payloadTypes = array_map('intval', array_keys($stream['payload_types'] ?? []));
+		sort($payloadTypes);
+		$ssrcs = array_keys($stream['ssrcs'] ?? []);
+		$sequenceGaps = 0;
+		$expected = 0;
+		$lowest = null;
+		$highest = null;
+		$lossEstimateReliable = true;
+		$sequenceNotes = [];
+		foreach ($stream['per_ssrc'] ?? [] as $stats) {
+			if (!empty($stats['sequence_wrap_seen'])) {
+				$lossEstimateReliable = false;
+				$sequenceNotes['sequence_wrap_seen'] = 'sequence wrap/reorder seen, loss not estimated';
+			}
+			if (!empty($stats['sequence_reorder_seen'])) {
+				$lossEstimateReliable = false;
+				$sequenceNotes['sequence_reorder_seen'] = 'sequence wrap/reorder seen, loss not estimated';
+			}
+			$sequenceGaps += (int)($stats['sequence_gaps'] ?? 0);
+			$count = (int)($stats['packet_count'] ?? 0);
+			$expected += $count + (int)($stats['sequence_gaps'] ?? 0);
+			$low = (int)($stats['lowest_sequence'] ?? 0);
+			$high = (int)($stats['highest_sequence'] ?? 0);
+			$lowest = $lowest === null ? $low : min($lowest, $low);
+			$highest = $highest === null ? $high : max($highest, $high);
+		}
+		$lossPercent = ($lossEstimateReliable && $expected > 0) ? round(($sequenceGaps / $expected) * 100, 2) : null;
+		if (!$lossEstimateReliable && empty($sequenceNotes)) {
+			$sequenceNotes['loss_not_estimated'] = 'sequence wrap/reorder seen, loss not estimated';
+		}
+		return [
+			'src' => $stream['src'],
+			'dst' => $stream['dst'],
+			'packet_count' => (int)$stream['packet_count'],
+			'ssrcs' => $ssrcs,
+			'payload_types' => $payloadTypes,
+			'codecs' => $this->codecNames($payloadTypes, $sdp),
+			'lowest_sequence' => $lowest,
+			'highest_sequence' => $highest,
+			'sequence_gaps' => $sequenceGaps,
+			'loss_estimate_percent' => $lossPercent,
+			'loss_estimate_reliable' => $lossEstimateReliable,
+			'sequence_notes' => array_values($sequenceNotes),
+			'first_time' => $stream['first_time'],
+			'last_time' => $stream['last_time'],
+			'confidence' => $match['confidence'],
+			'correlation_basis' => $match['basis'],
+			'timing_correlation' => $match['timing'] ?? null,
+		];
+	}
+
+	private function codecNames($payloadTypes, $sdp) {
+		$static = [0 => 'PCMU', 3 => 'GSM', 4 => 'G723', 8 => 'PCMA', 9 => 'G722', 18 => 'G729'];
+		$out = [];
+		foreach ($payloadTypes as $pt) {
+			if (isset($sdp['rtpmap'][$pt])) $out[$pt] = $sdp['rtpmap'][$pt];
+			elseif (isset($static[$pt])) $out[$pt] = $static[$pt];
+			else $out[$pt] = ($pt >= 96 && $pt <= 127) ? 'dynamic' : 'unknown';
+		}
+		return $out;
+	}
+
+	private function rtcpSeenForCall($rtcpStreams, $call, $sdp) {
+		$endpointIps = $this->callEndpointIps($call);
+		foreach ($rtcpStreams as $stream) {
+			if ($this->rtpTimingCorrelation($stream, $call) === null) continue;
+			if (!isset($endpointIps[$stream['src_ip'] ?? '']) && !isset($endpointIps[$stream['dst_ip'] ?? ''])) continue;
+			foreach ($sdp['ports'] as $port) {
+				if ((int)($stream['src_port'] ?? 0) === $port + 1 || (int)($stream['dst_port'] ?? 0) === $port + 1) return true;
+			}
+		}
+		return false;
+	}
+
+	private function maxRtpLossEstimate($streams) {
+		$max = null;
+		foreach ($streams as $stream) {
+			if (($stream['loss_estimate_percent'] ?? null) === null) continue;
+			$max = $max === null ? $stream['loss_estimate_percent'] : max($max, $stream['loss_estimate_percent']);
+		}
+		return $max;
+	}
+
+	private function rtpSequenceNotes($streams) {
+		$notes = [];
+		foreach ($streams as $stream) {
+			foreach ($stream['sequence_notes'] ?? [] as $note) {
+				if ($note === 'sequence wrap/reorder seen, loss not estimated') {
+					$note = 'sequence wrap/reorder seen, loss not estimated for affected stream(s)';
+				}
+				$notes[$note] = $note;
+			}
+		}
+		return array_values($notes);
+	}
+
+	private function hasCodecMismatch($streams, $sdp) {
+		if (empty($sdp['payload_types'])) return false;
+		foreach ($streams as $stream) {
+			foreach ($stream['payload_types'] ?? [] as $pt) {
+				if (!isset($sdp['payload_types'][(int)$pt])) return true;
+			}
+		}
+		return false;
+	}
+
+	private function rtpDescription($status) {
+		if ($status === 'rtp_both_directions') return 'RTP seen in both captured directions.';
+		if ($status === 'rtp_one_direction_only') return 'RTP seen in only one captured direction.';
+		if ($status === 'rtp_absent_despite_answer') return 'No RTP seen at this capture point; direct media can bypass this capture point.';
+		return 'No negotiated RTP media was identified from SDP.';
 	}
 
 	private function summariseCapture($calls, $decoded) {
@@ -794,28 +1357,368 @@ class PcapAnalysis extends AbstractTool {
 			];
 		}
 		usort($topCalls, function($a, $b) {
-			if ($a['message_count'] === $b['message_count']) return $b['duration_ms'] <=> $a['duration_ms'];
-			return $b['message_count'] <=> $a['message_count'];
+			$rank = ['failed' => 6, 'busy' => 5, 'cancelled' => 4, 'incomplete_capture' => 3, 'answered' => 2];
+			$ar = $rank[$a['outcome']] ?? 1;
+			$br = $rank[$b['outcome']] ?? 1;
+			if ($ar === $br) {
+				if ($a['message_count'] === $b['message_count']) return $b['duration_ms'] <=> $a['duration_ms'];
+				return $b['message_count'] <=> $a['message_count'];
+			}
+			return $br <=> $ar;
 		});
+		$finalStatusCounts = array_values($statuses);
+		$focus = $this->deriveFocusCall($calls);
+		$inviteOutcomes = $this->countInviteOutcomes($calls);
+		$rtpSummary = $this->summariseRtpEvidence($calls);
 		return [
-			'final_status_counts' => array_values($statuses),
+			'final_status_counts' => $finalStatusCounts,
 			'observation_counts' => $observations,
 			'outcome_counts' => $outcomes,
 			'transport_counts' => $transports,
 			'top_calls' => array_slice($topCalls, 0, 10),
 			'reader_summary' => $this->deriveReaderSummary($calls, $decoded, $outcomes, $observations),
-			'focus' => $this->deriveFocusCall($calls),
+			'support_summary' => $this->deriveSupportSummary($calls, $decoded, $outcomes, $observations, $inviteOutcomes, $rtpSummary),
+			'likely_next_checks' => $this->deriveLikelyNextChecks($calls, $observations, $rtpSummary),
+			'confidence_notes' => $this->deriveConfidenceNotes($calls, $decoded, $observations, $rtpSummary),
+			'evidence_highlights' => $this->deriveEvidenceHighlights($calls, $decoded, $inviteOutcomes, $finalStatusCounts, $observations, $rtpSummary, $focus),
+			'focus' => $focus,
 			'packet_count' => $decoded['packet_count'],
 		];
+	}
+
+	private function deriveSupportSummary($calls, $decoded, $outcomes, $observations, $inviteStats, $rtpSummary) {
+		$lines = [];
+		$totalInvites = (int)($inviteStats['total'] ?? 0);
+		$answered = (int)($inviteStats['answered'] ?? 0);
+		$busy = (int)($inviteStats['busy'] ?? 0);
+		$failed = (int)($inviteStats['failed'] ?? 0);
+		$cancelled = (int)($inviteStats['cancelled'] ?? 0);
+		$incomplete = (int)($inviteStats['incomplete_capture'] ?? 0);
+
+		if ($totalInvites === 0) {
+			$lines[] = $this->supportLine(
+				'no_invite_calls',
+				'The capture does not include a decoded INVITE call flow, so it does not provide enough evidence to determine call setup behaviour.',
+				'medium',
+				['sip_message_count', 'invite_outcomes']
+			);
+		}
+		if ($answered > 0) {
+			$lines[] = $this->supportLine(
+				'answered_invites',
+				"{$answered} captured INVITE call flow(s) reached a 2xx final response at SIP signalling level.",
+				'high',
+				['invite_outcomes.answered', 'final_status_counts']
+			);
+		}
+		if ($busy > 0) {
+			$lines[] = $this->supportLine(
+				'busy_invites',
+				"{$busy} captured INVITE call flow(s) include a busy response.",
+				'high',
+				['invite_outcomes.busy', 'observation_counts.busy_response']
+			);
+		}
+		if ($failed > 0) {
+			$lines[] = $this->supportLine(
+				'failed_invites',
+				"{$failed} captured INVITE call flow(s) ended in failure responses; the strongest signalling evidence is the final SIP response and any Reason header.",
+				'high',
+				['invite_outcomes.failed', 'final_status_counts']
+			);
+		}
+		if ($cancelled > 0) {
+			$lines[] = $this->supportLine(
+				'cancelled_invites',
+				"{$cancelled} captured INVITE call flow(s) ended with cancellation evidence before answer.",
+				'medium',
+				['invite_outcomes.cancelled', 'observation_counts.cancelled_before_answer']
+			);
+		}
+		if ($incomplete > 0) {
+			$lines[] = $this->supportLine(
+				'incomplete_invites',
+				"{$incomplete} captured INVITE call flow(s) did not include a final response, so the capture may be incomplete, asymmetric, or too short for that flow.",
+				'medium',
+				['invite_outcomes.incomplete_capture']
+			);
+		}
+
+		$answeredRtp = $rtpSummary['answered_status_counts'] ?? [];
+		if (!empty($answeredRtp['rtp_both_directions'])) {
+			$lines[] = $this->supportLine(
+				'answered_rtp_both_directions',
+				"For {$answeredRtp['rtp_both_directions']} answered call flow(s), RTP was captured in both directions at this capture point.",
+				$this->rtpStatusConfidence($rtpSummary, 'rtp_both_directions'),
+				['rtp_summary.answered_status_counts.rtp_both_directions']
+			);
+		}
+		if (!empty($answeredRtp['rtp_one_direction_only'])) {
+			$lines[] = $this->supportLine(
+				'answered_rtp_one_direction_only',
+				"For {$answeredRtp['rtp_one_direction_only']} answered call flow(s), RTP was captured in one direction only. This is consistent with possible media visibility asymmetry, but does not prove what either endpoint heard.",
+				$this->rtpStatusConfidence($rtpSummary, 'rtp_one_direction_only'),
+				['rtp_summary.answered_status_counts.rtp_one_direction_only', 'observation_counts.rtp_one_direction_only']
+			);
+		}
+		if (!empty($answeredRtp['rtp_absent_despite_answer'])) {
+			$lines[] = $this->supportLine(
+				'answered_rtp_absent',
+				"For {$answeredRtp['rtp_absent_despite_answer']} answered call flow(s), no RTP seen at this capture point despite successful signalling and negotiated media. This does not prove that no media existed; direct media may have bypassed the PBX or capture location.",
+				'low',
+				['rtp_summary.answered_status_counts.rtp_absent_despite_answer', 'observation_counts.rtp_absent_despite_answer']
+			);
+		}
+		if (!empty($observations['private_sdp_connection_address'])) {
+			$lines[] = $this->supportLine(
+				'private_sdp_connection_address',
+				'SDP advertised a private media address in at least one decoded call flow.',
+				'medium',
+				['observation_counts.private_sdp_connection_address']
+			);
+		}
+		if (empty($lines)) {
+			$lines[] = $this->supportLine(
+				'insufficient_evidence',
+				'The capture does not provide enough evidence to determine a specific cause.',
+				'low',
+				['sip_message_count', 'call_count']
+			);
+		}
+		return $lines;
+	}
+
+	private function deriveLikelyNextChecks($calls, $observations, $rtpSummary) {
+		$checks = [];
+		if (!empty($observations['private_sdp_connection_address'])) {
+			$checks[] = $this->supportLine(
+				'check_nat_media_addresses',
+				'Check External Address, Local Networks, and NAT/media-address configuration; confirm whether the advertised private SDP address is expected for this topology.',
+				'medium',
+				['observation_counts.private_sdp_connection_address']
+			);
+		}
+		if (!empty($observations['rtp_one_direction_only'])) {
+			$checks[] = $this->supportLine(
+				'check_one_direction_rtp_visibility',
+				'Compare SDP media addresses with observed RTP addresses, check whether direct media is enabled, and confirm whether this capture point should see both RTP directions.',
+				'medium',
+				['observation_counts.rtp_one_direction_only', 'rtp_summary.status_counts.rtp_one_direction_only']
+			);
+		}
+		if (!empty($observations['rtp_absent_despite_answer'])) {
+			$checks[] = $this->supportLine(
+				'check_capture_location_for_absent_rtp',
+				'Confirm capture location and whether RTP is expected to traverse this host; capture at the endpoint or media relay if needed.',
+				'low',
+				['observation_counts.rtp_absent_despite_answer']
+			);
+		}
+		if (!empty($observations['retransmissions_seen'])) {
+			$checks[] = $this->supportLine(
+				'check_retransmission_context',
+				'Compare repeated SIP messages with surrounding responses and review packet-loss or capture-loss indicators before assuming network loss.',
+				'low',
+				['observation_counts.retransmissions_seen']
+			);
+		}
+		if (!empty($observations['large_signalling_gap'])) {
+			$checks[] = $this->supportLine(
+				'check_signalling_gap_context',
+				'If a multi-second gap follows 180/183 responses, normal ring time is often the first explanation; if it occurs before provisional responses or before failure, review routing, DNS, authentication, and upstream response time.',
+				'low',
+				['observation_counts.large_signalling_gap']
+			);
+		}
+		if (!empty($observations['answered_without_ack_seen'])) {
+			$checks[] = $this->supportLine(
+				'check_missing_ack_visibility',
+				'For answered calls with no ACK in the capture, check capture asymmetry and routing before treating the ACK as truly absent.',
+				'medium',
+				['observation_counts.answered_without_ack_seen']
+			);
+		}
+		if (empty($checks)) {
+			$checks[] = $this->supportLine(
+				'preserve_scope_or_capture_more',
+				'No specific next check is strongly supported by decoded observations; narrow to a Call-ID or capture closer to the endpoint/media path if more detail is needed.',
+				'low',
+				['observation_counts', 'focus_call']
+			);
+		}
+		return $checks;
+	}
+
+	private function deriveConfidenceNotes($calls, $decoded, $observations, $rtpSummary) {
+		$notes = [];
+		if (!empty($rtpSummary['status_counts'])) {
+			$notes[] = $this->supportLine(
+				'rtp_capture_point_scope',
+				'RTP findings are based only on packets visible at this capture point.',
+				'medium',
+				['rtp_summary.status_counts']
+			);
+		}
+		if (!empty($observations['rtp_absent_despite_answer'])) {
+			$notes[] = $this->supportLine(
+				'rtp_absence_not_proof',
+				'Absence of RTP in this capture is not proof that no media existed.',
+				'low',
+				['observation_counts.rtp_absent_despite_answer']
+			);
+		}
+		if (!empty($observations['rtp_sequence_gaps'])) {
+			$notes[] = $this->supportLine(
+				'rtp_sequence_gap_estimate_scope',
+				'RTP sequence gaps are estimates from captured packets and cannot distinguish network loss from capture-point loss.',
+				'medium',
+				['observation_counts.rtp_sequence_gaps']
+			);
+		}
+		if ($this->hasReassembledMessages($calls)) {
+			$notes[] = $this->supportLine(
+				'tcp_reassembly_scope',
+				'TCP SIP messages recovered through simple reassembly carry lower confidence than complete packet-level SIP messages.',
+				'medium',
+				['transport_counts.TCP', 'messages.reassembled']
+			);
+		}
+		if ((int)($decoded['unparsed_sip_message_count'] ?? 0) > 0) {
+			$notes[] = $this->supportLine(
+				'unparsed_sip_scope',
+				'Unparsed SIP-like messages mean message and call totals may be incomplete.',
+				'medium',
+				['unparsed_sip_message_count']
+			);
+		}
+		if (!empty($observations['large_signalling_gap']) && $this->hasCleanAnsweredCalls($calls)) {
+			$notes[] = $this->supportLine(
+				'clean_answered_gap_scope',
+				'For clean answered calls, a multi-second signalling gap can simply reflect ring time or human answer delay.',
+				'low',
+				['observation_counts.large_signalling_gap', 'outcome_counts.answered']
+			);
+		}
+		if (empty($notes)) {
+			$notes[] = $this->supportLine(
+				'evidence_scope',
+				'Interpretation is limited to decoded packets in this capture; the capture may not include every signalling or media path.',
+				'low',
+				['packet_count', 'sip_message_count']
+			);
+		}
+		return $notes;
+	}
+
+	private function deriveEvidenceHighlights($calls, $decoded, $inviteOutcomes, $finalStatusCounts, $observations, $rtpSummary, $focus) {
+		return [
+			'sip_message_count' => count($decoded['messages'] ?? []),
+			'call_count' => count($calls),
+			'unparsed_message_count' => (int)($decoded['unparsed_sip_message_count'] ?? 0),
+			'invite_outcomes' => $inviteOutcomes,
+			'final_status_counts' => $finalStatusCounts,
+			'rtp_summary' => $rtpSummary,
+			'key_observations' => $this->explainObservationCounts($observations),
+			'focus_call' => $focus,
+		];
+	}
+
+	private function supportLine($id, $text, $confidence, $evidence) {
+		return [
+			'id' => $id,
+			'text' => $text,
+			'confidence' => $confidence,
+			'evidence' => array_values($evidence),
+		];
+	}
+
+	private function explainObservationCounts($observations) {
+		$out = [];
+		foreach ($observations as $id => $count) {
+			$out[] = [
+				'id' => $id,
+				'count' => (int)$count,
+				'explanation' => $this->explainObservation($id),
+			];
+		}
+		return $out;
+	}
+
+	private function explainObservation($id) {
+		$map = [
+			'answered_invite' => 'The INVITE reached a successful 2xx final response.',
+			'busy_response' => 'The captured signalling includes a busy response.',
+			'rtp_both_directions' => 'RTP was captured in both directions at this capture point.',
+			'rtp_one_direction_only' => 'RTP was captured in one direction only.',
+			'rtp_absent_despite_answer' => 'No RTP seen at this capture point despite successful signalling and negotiated media.',
+			'private_sdp_connection_address' => 'SDP advertised a private media address.',
+			'large_signalling_gap' => 'A multi-second signalling gap was observed.',
+			'retransmissions_seen' => 'Repeated byte-identical non-provisional SIP messages were observed.',
+			'answered_without_ack_seen' => 'A successful INVITE response was captured without a matching ACK in the decoded packets.',
+			'rtp_sequence_gaps' => 'RTP sequence gaps were estimated from captured packets.',
+			'codec_mismatch_vs_sdp' => 'Observed RTP payload types differed from decoded SDP payload types.',
+			'invite_without_final_response_in_capture' => 'An INVITE was captured without a final response in the decoded packets.',
+			'cancelled_before_answer' => 'Cancellation evidence was captured before answer.',
+			'normal_dialog_teardown_seen' => 'A BYE was captured in the dialog.',
+			'sdp_present' => 'SDP media negotiation data was decoded.',
+		];
+		return $map[$id] ?? 'Decoded evidence produced this observation.';
+	}
+
+	private function summariseRtpEvidence($calls) {
+		$statusCounts = [];
+		$answeredStatusCounts = [];
+		$confidenceCounts = [];
+		$totalStreams = 0;
+		$rtcpSeenCalls = 0;
+		$sequenceGapCalls = 0;
+		foreach ($calls as $call) {
+			$rtp = $call['summary']['rtp'] ?? null;
+			if (empty($rtp)) continue;
+			$status = $rtp['status'] ?? 'unknown';
+			$statusCounts[$status] = ($statusCounts[$status] ?? 0) + 1;
+			if (($call['summary']['outcome'] ?? null) === 'answered') {
+				$answeredStatusCounts[$status] = ($answeredStatusCounts[$status] ?? 0) + 1;
+			}
+			$confidence = $rtp['confidence'] ?? 'unknown';
+			$confidenceCounts[$confidence] = ($confidenceCounts[$confidence] ?? 0) + 1;
+			$totalStreams += count($rtp['streams'] ?? []);
+			if (!empty($rtp['rtcp_seen'])) $rtcpSeenCalls++;
+			if (isset($rtp['sequence_gap_estimate_percent']) && $rtp['sequence_gap_estimate_percent'] !== null && $rtp['sequence_gap_estimate_percent'] > 0) $sequenceGapCalls++;
+		}
+		return [
+			'status_counts' => $statusCounts,
+			'answered_status_counts' => $answeredStatusCounts,
+			'confidence_counts' => $confidenceCounts,
+			'total_streams_attached' => $totalStreams,
+			'rtcp_seen_call_count' => $rtcpSeenCalls,
+			'sequence_gap_call_count' => $sequenceGapCalls,
+		];
+	}
+
+	private function rtpStatusConfidence($rtpSummary, $status) {
+		if ($status === 'rtp_absent_despite_answer') return 'low';
+		$confidenceCounts = $rtpSummary['confidence_counts'] ?? [];
+		if (!empty($confidenceCounts['low'])) return 'low';
+		if (!empty($confidenceCounts['medium'])) return 'medium';
+		return 'high';
 	}
 
 	private function deriveReaderSummary($calls, $decoded, $outcomes, $observations) {
 		$callCount = count($calls);
 		$sipCount = count($decoded['messages'] ?? []);
+		$unparsed = (int)($decoded['unparsed_sip_message_count'] ?? 0);
 		$inviteStats = $this->countInviteOutcomes($calls);
 		$nonInviteFailures = $this->countNonInviteFailures($calls);
+		$hasReassembled = $this->hasReassembledMessages($calls);
 		$lines = [];
 		$lines[] = "This capture contains {$sipCount} SIP message(s) grouped into {$callCount} transaction(s) or call(s).";
+		if ($unparsed > 0) {
+			$lines[] = "{$unparsed} SIP-like message(s) could not be parsed cleanly, so message and call totals may be incomplete.";
+		}
+		if ($hasReassembled) {
+			$lines[] = "Some SIP messages were recovered from simple TCP stream reassembly; conclusions based on those ladders should be treated with lower confidence.";
+		}
 
 		$answered = (int)($inviteStats['answered'] ?? 0);
 		$completed = (int)($outcomes['completed'] ?? 0);
@@ -900,6 +1803,22 @@ class PcapAnalysis extends AbstractTool {
 		return $count;
 	}
 
+	private function hasReassembledMessages($calls) {
+		foreach ($calls as $call) {
+			foreach ($call['messages'] ?? [] as $msg) {
+				if (!empty($msg['reassembled'])) return true;
+			}
+		}
+		return false;
+	}
+
+	private function hasCleanAnsweredCalls($calls) {
+		foreach ($calls as $call) {
+			if ($this->isCleanAnsweredCall($call)) return true;
+		}
+		return false;
+	}
+
 	private function deriveFocusCall($calls) {
 		$best = null;
 		$bestScore = -1;
@@ -911,10 +1830,10 @@ class PcapAnalysis extends AbstractTool {
 			$obs = array_flip($summary['observations'] ?? []);
 			$score = 0;
 			$reason = 'most relevant SIP ladder';
-			if (isset($methods['INVITE']) && $outcome === 'failed') { $score += 120; $reason = 'failed INVITE call'; }
-			elseif (isset($methods['INVITE']) && ($outcome === 'busy' || $outcome === 'cancelled')) { $score += 100; $reason = "{$outcome} INVITE call"; }
-			elseif (isset($methods['INVITE']) && $outcome === 'incomplete_capture') { $score += 90; $reason = 'incomplete INVITE call'; }
-			elseif (isset($methods['INVITE']) && $outcome === 'answered') { $score += 40; $reason = 'answered call with the most signalling detail'; }
+			if (isset($methods['INVITE']) && $outcome === 'failed') { $score += 1000; $reason = 'failed INVITE call'; }
+			elseif (isset($methods['INVITE']) && ($outcome === 'busy' || $outcome === 'cancelled')) { $score += 900; $reason = "{$outcome} INVITE call"; }
+			elseif (isset($methods['INVITE']) && $outcome === 'incomplete_capture') { $score += 800; $reason = 'incomplete INVITE call'; }
+			elseif (isset($methods['INVITE']) && $outcome === 'answered') { $score += 100; $reason = 'answered call with the most signalling detail'; }
 			elseif ($outcome === 'failed') { $score += 35; $reason = 'failed non-call SIP transaction'; }
 			elseif ($outcome === 'auth_challenge') { $score += 15; $reason = 'authentication challenge transaction'; }
 			if (isset($obs['answered_without_ack_seen'])) $score += 40;

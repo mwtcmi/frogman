@@ -1724,7 +1724,9 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 					$hint = $this->sanitizeForChat($data['hint'] ?? '');
 					return "**PCAP analysis unsupported** — `{$reason}`" . ($hint !== '' ? "\n`{$hint}`" : '');
 				}
-				$lines = ["**PCAP SIP ladders** — {$data['sip_message_count']} SIP messages across {$data['call_count']} call(s)"];
+				$unparsed = (int)($data['unparsed_sip_message_count'] ?? 0);
+				$unparsedText = $unparsed > 0 ? ", {$unparsed} SIP-like message(s) unparsed" : "";
+				$lines = ["**PCAP SIP ladders** — {$data['sip_message_count']} SIP messages across {$data['call_count']} call(s){$unparsedText}"];
 				if (!empty($data['analysis']['outcome_counts'])) {
 					$parts = [];
 					foreach ($data['analysis']['outcome_counts'] as $outcome => $count) {
@@ -1755,7 +1757,7 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 				}
 				if (!empty($data['analysis']['top_calls']) && ($data['call_count'] ?? 0) > 1) {
 					$lines[] = "";
-					$lines[] = "Most active calls:";
+					$lines[] = "Focus candidates:";
 					foreach (array_slice($data['analysis']['top_calls'], 0, 3) as $top) {
 						$topId = $this->sanitizeForChat($top['call_id'] ?? '');
 						$outcome = $this->sanitizeForChat($top['outcome'] ?? 'unknown');
@@ -1816,9 +1818,28 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 						if (!empty($summaryParts)) {
 							$lines[] = "  Summary: `" . implode('` `', $summaryParts) . "`";
 						}
+						if (!empty($call['summary']['rtp'])) {
+							$rtp = $call['summary']['rtp'];
+							$status = $this->sanitizeForChat($rtp['status'] ?? 'unknown');
+							$confidence = $this->sanitizeForChat($rtp['confidence'] ?? 'low');
+							$streamCount = count($rtp['streams'] ?? []);
+							$rtcp = !empty($rtp['rtcp_seen']) ? ', RTCP seen' : '';
+							$hasSeqNotes = !empty($rtp['sequence_notes']);
+							$lossSuffix = $hasSeqNotes ? '% on estimable stream(s)' : '%';
+							$loss = isset($rtp['sequence_gap_estimate_percent']) && $rtp['sequence_gap_estimate_percent'] !== null ? ', seq gaps ~' . $this->sanitizeForChat((string)$rtp['sequence_gap_estimate_percent']) . $lossSuffix : '';
+							$seqNote = !empty($rtp['sequence_notes']) ? ', ' . implode(', ', array_map([$this, 'sanitizeForChat'], $rtp['sequence_notes'])) : '';
+							$lines[] = "  RTP: `{$status}`, confidence `{$confidence}`, {$streamCount} stream(s){$rtcp}{$loss}{$seqNote}";
+						}
 						if (!empty($call['summary']['diagnostic_hints'])) {
 							foreach (array_slice($call['summary']['diagnostic_hints'], 0, 3) as $hint) {
-								$lines[] = "  Hint: `" . $this->sanitizeForChat($hint) . "`";
+								if (is_array($hint)) {
+									$text = $this->sanitizeForChat($hint['text'] ?? '');
+									$confidence = $this->sanitizeForChat($hint['confidence'] ?? 'low');
+									$obs = !empty($hint['observations']) ? ' obs ' . implode(', ', array_map([$this, 'sanitizeForChat'], $hint['observations'])) : '';
+									$lines[] = "  Hint ({$confidence}): `{$text}{$obs}`";
+								} else {
+									$lines[] = "  Hint: `" . $this->sanitizeForChat($hint) . "`";
+								}
 							}
 						}
 						if (!empty($call['summary']['media'])) {
@@ -1872,6 +1893,32 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 					$lines[] = "**Reader summary**";
 					foreach (array_slice($data['analysis']['reader_summary'], 0, 5) as $summaryLine) {
 						$lines[] = "- " . $this->sanitizeForChat($summaryLine);
+					}
+					if (!empty($data['analysis']['support_summary'])) {
+						$lines[] = "";
+						$lines[] = "**Support summary**";
+						foreach (array_slice($data['analysis']['support_summary'], 0, 4) as $item) {
+							$text = $this->sanitizeForChat(is_array($item) ? ($item['text'] ?? '') : $item);
+							$confidence = is_array($item) ? $this->sanitizeForChat($item['confidence'] ?? 'low') : 'low';
+							if ($text !== '') $lines[] = "- ({$confidence}) {$text}";
+						}
+					}
+					if (!empty($data['analysis']['likely_next_checks'])) {
+						$lines[] = "";
+						$lines[] = "**Likely next checks**";
+						foreach (array_slice($data['analysis']['likely_next_checks'], 0, 3) as $item) {
+							$text = $this->sanitizeForChat(is_array($item) ? ($item['text'] ?? '') : $item);
+							$confidence = is_array($item) ? $this->sanitizeForChat($item['confidence'] ?? 'low') : 'low';
+							if ($text !== '') $lines[] = "- ({$confidence}) {$text}";
+						}
+					}
+					if (!empty($data['analysis']['confidence_notes'])) {
+						$lines[] = "";
+						$lines[] = "**Confidence notes**";
+						foreach (array_slice($data['analysis']['confidence_notes'], 0, 3) as $item) {
+							$text = $this->sanitizeForChat(is_array($item) ? ($item['text'] ?? '') : $item);
+							if ($text !== '') $lines[] = "- {$text}";
+						}
 					}
 					if (!empty($data['analysis']['focus']['call_id']) && !empty($data['path'])) {
 						$focusId = $this->sanitizeForChat($data['analysis']['focus']['call_id']);
