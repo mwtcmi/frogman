@@ -963,10 +963,11 @@ class PcapAnalysis extends AbstractTool {
 			$hints[] = $this->diagnosticHint('cancelled_before_answer', 'CANCEL/487 was seen before answer; user cancellation or an upstream timeout are possible explanations.', 'medium', ['cancelled_before_answer']);
 		}
 		if ($outcome === 'failed') {
+			$methods = array_flip($call['summary']['methods'] ?? []);
 			$isInvite = isset($methods['INVITE']);
 			$failText = $isInvite
 				? 'INVITE ended in a failure response; the final status and Reason header are the strongest evidence.'
-				: 'Request ended in a failure response; the final status and Reason header are the strongest evidence.';
+				: 'SIP transaction ended in a failure response; the final status and Reason header are the strongest evidence.';
 			$hints[] = $this->diagnosticHint('failed_final_response', $failText, 'high', ['failed_final_response']);
 		}
 		if (isset($obs['invite_without_final_response_in_capture'])) {
@@ -2098,8 +2099,8 @@ class PcapAnalysis extends AbstractTool {
 				're_explained' => 'The INVITE ended in a SIP failure response. The final status and Reason header are the strongest captured signalling evidence.',
 			],
 			'failed_final_response' => [
-				'simplified' => 'The call ended with a failure response.',
-				're_explained' => 'The INVITE ended in a SIP failure response. The final status and Reason header are the strongest captured signalling evidence.',
+				'simplified' => 'The transaction ended with a failure response.',
+				're_explained' => 'The SIP transaction ended in a failure response. The final status and Reason header are the strongest captured signalling evidence.',
 			],
 			'cancelled_invites' => [
 				'simplified' => 'The call was cancelled before it was answered.',
@@ -2386,7 +2387,7 @@ class PcapAnalysis extends AbstractTool {
 			'busy_invites' => ['methods' => ['INVITE'], 'statuses' => [486, 600]],
 			'busy_response' => ['methods' => ['INVITE'], 'statuses' => [486, 600]],
 			'failed_invites' => ['methods' => ['INVITE'], 'status_min' => 400],
-			'failed_final_response' => ['methods' => ['INVITE'], 'status_min' => 400],
+			'failed_final_response' => ['status_min' => 400],
 			'cancelled_invites' => ['methods' => ['INVITE', 'CANCEL'], 'statuses' => [200, 487]],
 			'cancelled_before_answer' => ['methods' => ['INVITE', 'CANCEL'], 'statuses' => [200, 487]],
 			'rtp_not_seen_before_cancellation' => ['methods' => ['INVITE', 'CANCEL'], 'statuses' => [200, 487]],
