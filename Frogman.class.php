@@ -1850,7 +1850,9 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 				$pcapActionCallId = (!empty($data['calls']) && count($data['calls']) === 1 && !empty($data['calls'][0]['call_id'])) ? $data['calls'][0]['call_id'] : null;
 				$unparsed = (int)($data['unparsed_sip_message_count'] ?? 0);
 				$unparsedText = $unparsed > 0 ? ", {$unparsed} SIP-like message(s) unparsed" : "";
-				$lines = ["**PCAP SIP ladders** — {$data['sip_message_count']} SIP messages across {$data['call_count']} call(s){$unparsedText}"];
+				$sipTransactionCount = (int)($data['analysis']['sip_transaction_count'] ?? $data['call_count'] ?? 0);
+				$inviteCallFlowCount = (int)($data['analysis']['invite_call_flow_count'] ?? ($data['analysis']['evidence_highlights']['invite_call_flow_count'] ?? 0));
+				$lines = ["**PCAP SIP ladders** — {$data['sip_message_count']} SIP messages across {$sipTransactionCount} SIP transaction(s), including {$inviteCallFlowCount} INVITE call flow(s){$unparsedText}"];
 				if (!empty($data['analysis']['outcome_counts'])) {
 					$parts = [];
 					foreach ($data['analysis']['outcome_counts'] as $outcome => $count) {
@@ -1885,13 +1887,18 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 					foreach (array_slice($data['analysis']['top_calls'], 0, 3) as $top) {
 						$topId = $this->sanitizeForChat($top['call_id'] ?? '');
 						$outcome = $this->sanitizeForChat($top['outcome'] ?? 'unknown');
+						$isInvite = !empty($top['is_invite_call_flow']);
+						$method = $this->sanitizeForChat($top['primary_method'] ?? '');
+						$typeLabel = $isInvite ? 'INVITE call flow' : trim(($method !== '' ? $method . ' ' : '') . 'SIP transaction');
 						$msgCount = (int)($top['message_count'] ?? 0);
 						$duration = (int)($top['duration_ms'] ?? 0);
 						$final = '';
 						if (!empty($top['final_status'])) {
+							$finalMethod = $this->sanitizeForChat($top['final_status']['cseq_method'] ?? '');
 							$final = ' final `' . (int)$top['final_status']['code'] . ' ' . $this->sanitizeForChat($top['final_status']['reason'] ?? '') . '`';
+							if (!$isInvite && $finalMethod !== '') $final .= ' CSeq `' . $finalMethod . '`';
 						}
-						$lines[] = "  `{$topId}` — `{$outcome}`, {$msgCount} msg, {$duration}ms{$final}";
+						$lines[] = "  `{$topId}` — {$outcome} {$typeLabel}, {$msgCount} msg, {$duration}ms{$final}";
 					}
 				}
 				if (!empty($data['truncated'])) {
@@ -2010,7 +2017,7 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 				}
 				if (($data['call_count'] ?? 0) > 5) {
 					$lines[] = "";
-					$lines[] = "... and " . ((int)$data['call_count'] - 5) . " more call(s). Re-run with `call_id` to focus one ladder.";
+					$lines[] = "... and " . ((int)$data['call_count'] - 5) . " more SIP transaction(s). Re-run with `call_id` to focus one ladder.";
 				}
 				if (!empty($data['analysis']['reader_summary'])) {
 					$lines[] = "";

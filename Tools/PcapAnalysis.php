@@ -1388,12 +1388,17 @@ class PcapAnalysis extends AbstractTool {
 				'outcome' => $outcome,
 				'duration_ms' => $call['duration_ms'],
 				'message_count' => $call['message_count'],
+				'is_invite_call_flow' => in_array('INVITE', $call['summary']['methods'] ?? [], true),
+				'primary_method' => $this->primarySipMethod($call['summary']['methods'] ?? []),
 				'final_status' => $call['summary']['invite_final_status'] ?: $call['summary']['final_status'],
 				'observations' => $call['summary']['observations'],
 			];
 		}
 		usort($topCalls, function($a, $b) {
 			$rank = ['failed' => 6, 'busy' => 5, 'cancelled' => 4, 'incomplete_capture' => 3, 'answered' => 2];
+			$ai = !empty($a['is_invite_call_flow']) ? 1 : 0;
+			$bi = !empty($b['is_invite_call_flow']) ? 1 : 0;
+			if ($ai !== $bi) return $bi <=> $ai;
 			$ar = $rank[$a['outcome']] ?? 1;
 			$br = $rank[$b['outcome']] ?? 1;
 			if ($ar === $br) {
@@ -1411,6 +1416,8 @@ class PcapAnalysis extends AbstractTool {
 			'observation_counts' => $observations,
 			'outcome_counts' => $outcomes,
 			'transport_counts' => $transports,
+			'invite_call_flow_count' => (int)($inviteOutcomes['total'] ?? 0),
+			'sip_transaction_count' => count($calls),
 			'top_calls' => array_slice($topCalls, 0, 10),
 			'reader_summary' => $this->deriveReaderSummary($calls, $decoded, $outcomes, $observations),
 			'support_summary' => $this->deriveSupportSummary($calls, $decoded, $outcomes, $observations, $inviteOutcomes, $rtpSummary),
@@ -1639,7 +1646,7 @@ class PcapAnalysis extends AbstractTool {
 		if ((int)($decoded['unparsed_sip_message_count'] ?? 0) > 0) {
 			$notes[] = $this->supportLine(
 				'unparsed_sip_scope',
-				'Unparsed SIP-like messages mean message and call totals may be incomplete.',
+				'Unparsed SIP-like messages mean message and SIP transaction totals may be incomplete.',
 				'medium',
 				['unparsed_sip_message_count']
 			);
@@ -1667,6 +1674,8 @@ class PcapAnalysis extends AbstractTool {
 		return [
 			'sip_message_count' => count($decoded['messages'] ?? []),
 			'call_count' => count($calls),
+			'sip_transaction_count' => count($calls),
+			'invite_call_flow_count' => (int)($inviteOutcomes['total'] ?? 0),
 			'unparsed_message_count' => (int)($decoded['unparsed_sip_message_count'] ?? 0),
 			'invite_outcomes' => $inviteOutcomes,
 			'final_status_counts' => $finalStatusCounts,
@@ -1881,7 +1890,7 @@ class PcapAnalysis extends AbstractTool {
 			return $this->responseExplainNarrative($analysis);
 		}
 		$intro = [
-			'response' => 'This explains the whole PCAP response that was displayed: aggregate counts, displayed call ladders, diagnostic hints, support summary, likely checks, and confidence limits. Omitted ladders are not treated as individually reviewed here.',
+			'response' => 'This explains the whole PCAP response that was displayed: aggregate counts, displayed SIP ladders, diagnostic hints, support summary, likely checks, and confidence limits. Omitted ladders are not treated as individually reviewed here.',
 			'diagnostic_hints' => 'These hints describe the notable observations for this call. They are confidence-scoped and should be read together, not as independent proof of a single cause.',
 			'support_summary' => 'This support summary combines the strongest decoded signalling and media observations. It preserves confidence levels because the capture point may not see every path.',
 			'likely_next_checks' => 'These checks are practical follow-ups suggested by the decoded evidence. They are prioritised by what the capture actually supports, while avoiding claims beyond this PCAP.',
@@ -1962,6 +1971,8 @@ class PcapAnalysis extends AbstractTool {
 		return [
 			'sip_message_count' => (int)($highlights['sip_message_count'] ?? 0),
 			'call_count' => (int)($highlights['call_count'] ?? 0),
+			'sip_transaction_count' => (int)($highlights['sip_transaction_count'] ?? $highlights['call_count'] ?? 0),
+			'invite_call_flow_count' => (int)($highlights['invite_call_flow_count'] ?? ($highlights['invite_outcomes']['total'] ?? 0)),
 			'unparsed_message_count' => (int)($highlights['unparsed_message_count'] ?? 0),
 			'invite_outcomes' => is_array($highlights['invite_outcomes'] ?? null) ? $highlights['invite_outcomes'] : [],
 			'outcome_counts' => is_array($analysis['outcome_counts'] ?? null) ? $analysis['outcome_counts'] : [],
@@ -1976,12 +1987,13 @@ class PcapAnalysis extends AbstractTool {
 
 	private function responseTotalSentence($facts) {
 		$sip = (int)($facts['sip_message_count'] ?? 0);
-		$calls = (int)($facts['call_count'] ?? 0);
-		if ($sip > 0 && $calls > 0) {
-			return 'This capture contains ' . $sip . ' decoded SIP ' . $this->pluralWord($sip, 'message') . ' grouped into ' . $calls . ' ' . $this->pluralWord($calls, 'transaction or call', 'transactions or calls') . '.';
+		$transactions = (int)($facts['sip_transaction_count'] ?? $facts['call_count'] ?? 0);
+		$inviteFlows = (int)($facts['invite_call_flow_count'] ?? ($facts['invite_outcomes']['total'] ?? 0));
+		if ($sip > 0 && $transactions > 0) {
+			return 'This capture contains ' . $sip . ' decoded SIP ' . $this->pluralWord($sip, 'message') . ' grouped into ' . $transactions . ' SIP ' . $this->pluralWord($transactions, 'transaction') . ', including ' . $inviteFlows . ' INVITE ' . $this->pluralWord($inviteFlows, 'call flow') . '.';
 		}
 		if ($sip > 0) {
-			return 'This capture contains ' . $sip . ' decoded SIP ' . $this->pluralWord($sip, 'message') . ', but no grouped transaction or call count is exposed in the response fields.';
+			return 'This capture contains ' . $sip . ' decoded SIP ' . $this->pluralWord($sip, 'message') . ', but no grouped SIP transaction count is exposed in the response fields.';
 		}
 		return 'This response summarizes the decoded PCAP analysis available from the capture.';
 	}
@@ -1995,7 +2007,7 @@ class PcapAnalysis extends AbstractTool {
 		if ($total > 0) {
 			return 'The formatted response shows the decoded ' . $this->pluralWord($total, 'ladder') . ' available in this result, so the ladder-level detail is limited to what this capture point saw.';
 		}
-		return 'No detailed call ladder is available in the displayed response, so the interpretation rests on aggregate decoded fields only.';
+		return 'No detailed SIP ladder is available in the displayed response, so the interpretation rests on aggregate decoded fields only.';
 	}
 
 	private function responseOutcomeSentence($facts) {
@@ -2203,10 +2215,10 @@ class PcapAnalysis extends AbstractTool {
 
 		$items[] = [
 			'id' => 'response_aggregate',
-			'text' => 'The response combines aggregate capture counts with the call ladders and summary sections shown below.',
+			'text' => 'The response combines aggregate capture counts with the SIP ladders and summary sections shown below.',
 			'confidence' => 'medium',
-			'simplified' => 'Read the aggregate counts as capture-wide context, then use the displayed ladders for call-level detail.',
-			're_explained' => 'The aggregate counts describe the decoded capture available to this run. The detailed ladder discussion is scoped to the calls displayed in the response, so omitted ladders are not individually interpreted here.',
+			'simplified' => 'Read the aggregate counts as capture-wide context, then use the displayed ladders for transaction-level detail.',
+			're_explained' => 'The aggregate counts describe the decoded capture available to this run. The detailed ladder discussion is scoped to the SIP transactions displayed in the response, so omitted ladders are not individually interpreted here.',
 			'evidence_text' => $aggregateEvidence,
 			'evidence_refs' => ['outcome_counts', 'final_status_counts', 'observation_counts', 'transport_counts', 'packet_count'],
 		];
@@ -2217,14 +2229,14 @@ class PcapAnalysis extends AbstractTool {
 		}
 		$items[] = [
 			'id' => 'response_displayed_calls',
-			'text' => "The formatted response displays {$displayedCount} of {$totalCalls} decoded call ladder(s).",
+			'text' => "The formatted response displays {$displayedCount} of {$totalCalls} decoded SIP ladder(s).",
 			'confidence' => 'medium',
 			'simplified' => $totalCalls > $displayedCount
-				? "This view shows {$displayedCount} of {$totalCalls} decoded call ladder(s); focus a Call-ID to inspect omitted ladders."
-				: "This view shows the decoded call ladder(s) available in this response.",
+				? "This view shows {$displayedCount} of {$totalCalls} decoded SIP ladder(s); focus a Call-ID to inspect omitted ladders."
+				: "This view shows the decoded SIP ladder(s) available in this response.",
 			're_explained' => $totalCalls > $displayedCount
-				? "Only {$displayedCount} of {$totalCalls} decoded call ladder(s) are shown in detail. The action response discusses those displayed ladders plus aggregate counts, without pretending to review hidden omitted ladders individually."
-				: "The displayed call ladder section covers the decoded calls available in this response. Each call-level statement remains limited to the SIP and RTP packets visible at this capture point.",
+				? "Only {$displayedCount} of {$totalCalls} decoded SIP ladder(s) are shown in detail. The action response discusses those displayed ladders plus aggregate counts, without pretending to review hidden omitted ladders individually."
+				: "The displayed SIP ladder section covers the decoded SIP transaction(s) available in this response. Each ladder-level statement remains limited to the SIP and RTP packets visible at this capture point.",
 			'evidence_text' => $displayedEvidence,
 			'evidence_refs' => ['displayed_calls', 'top_calls'],
 		];
@@ -2496,7 +2508,7 @@ class PcapAnalysis extends AbstractTool {
 			],
 			'unparsed_sip_scope' => [
 				'simplified' => 'Some SIP-like data could not be fully read.',
-				're_explained' => 'Unparsed SIP-like messages mean decoded message and call totals may be incomplete.',
+				're_explained' => 'Unparsed SIP-like messages mean decoded message and SIP transaction totals may be incomplete.',
 			],
 			'clean_answered_gap_scope' => [
 				'simplified' => 'For answered calls, a long pause can simply be ringing time.',
@@ -2810,16 +2822,17 @@ class PcapAnalysis extends AbstractTool {
 	}
 
 	private function deriveReaderSummary($calls, $decoded, $outcomes, $observations) {
-		$callCount = count($calls);
+		$transactionCount = count($calls);
 		$sipCount = count($decoded['messages'] ?? []);
 		$unparsed = (int)($decoded['unparsed_sip_message_count'] ?? 0);
 		$inviteStats = $this->countInviteOutcomes($calls);
 		$nonInviteFailures = $this->countNonInviteFailures($calls);
 		$hasReassembled = $this->hasReassembledMessages($calls);
 		$lines = [];
-		$lines[] = "This capture contains {$sipCount} SIP message(s) grouped into {$callCount} transaction(s) or call(s).";
+		$inviteCount = (int)($inviteStats['total'] ?? 0);
+		$lines[] = "This capture contains {$sipCount} SIP message(s) grouped into {$transactionCount} SIP transaction(s), including {$inviteCount} INVITE call flow(s).";
 		if ($unparsed > 0) {
-			$lines[] = "{$unparsed} SIP-like message(s) could not be parsed cleanly, so message and call totals may be incomplete.";
+			$lines[] = "{$unparsed} SIP-like message(s) could not be parsed cleanly, so message and SIP transaction totals may be incomplete.";
 		}
 		if ($hasReassembled) {
 			$lines[] = "Some SIP messages were recovered from simple TCP stream reassembly; conclusions based on those ladders should be treated with lower confidence.";
@@ -2841,7 +2854,7 @@ class PcapAnalysis extends AbstractTool {
 			if ($incomplete) $issues[] = "{$incomplete} incomplete";
 			$lines[] = "Attention: " . implode(', ', $issues) . " INVITE call flow(s) need review.";
 		} elseif ($inviteStats['total'] > 0 && $answered) {
-			$lines[] = "Main result: {$answered} INVITE call flow(s) reached 200 OK, so the captured calls look successful at SIP signalling level.";
+			$lines[] = "Main result: {$answered} INVITE call flow(s) reached 200 OK, so the captured INVITE call flow(s) look successful at SIP signalling level.";
 		} elseif ($completed) {
 			$ok = [];
 			if ($completed) $ok[] = "{$completed} completed non-INVITE transaction(s)";
@@ -2853,7 +2866,7 @@ class PcapAnalysis extends AbstractTool {
 		}
 
 		if ($nonInviteFailures > 0 && $inviteStats['total'] > 0 && !$failed && !$busy && !$cancelled && !$incomplete) {
-			$lines[] = "{$nonInviteFailures} non-call transaction(s), such as OPTIONS/qualify checks, returned failure responses; that does not necessarily mean the captured calls failed.";
+			$lines[] = "{$nonInviteFailures} non-INVITE SIP transaction(s), such as OPTIONS/qualify checks, returned failure responses; that does not necessarily mean the captured INVITE call flow(s) failed.";
 		}
 
 		$notables = [];
@@ -2878,11 +2891,19 @@ class PcapAnalysis extends AbstractTool {
 			$lines[] = "No obvious SIP signalling fault was flagged from headers alone.";
 		}
 
-		if ($callCount > 1) {
+		if ($transactionCount > 1) {
 			$lines[] = "Best next step: re-run with a specific call_id to narrow the output to one ladder.";
 		}
 
 		return $lines;
+	}
+
+	private function primarySipMethod($methods) {
+		if (!is_array($methods) || empty($methods)) return 'SIP';
+		foreach (['INVITE', 'OPTIONS', 'REGISTER', 'SUBSCRIBE', 'NOTIFY', 'MESSAGE', 'BYE', 'CANCEL', 'ACK'] as $method) {
+			if (in_array($method, $methods, true)) return $method;
+		}
+		return (string)reset($methods);
 	}
 
 	private function countInviteOutcomes($calls) {
@@ -2935,11 +2956,11 @@ class PcapAnalysis extends AbstractTool {
 			$obs = array_flip($summary['observations'] ?? []);
 			$score = 0;
 			$reason = 'most relevant SIP ladder';
-			if (isset($methods['INVITE']) && $outcome === 'failed') { $score += 1000; $reason = 'failed INVITE call'; }
-			elseif (isset($methods['INVITE']) && ($outcome === 'busy' || $outcome === 'cancelled')) { $score += 900; $reason = "{$outcome} INVITE call"; }
-			elseif (isset($methods['INVITE']) && $outcome === 'incomplete_capture') { $score += 800; $reason = 'incomplete INVITE call'; }
-			elseif (isset($methods['INVITE']) && $outcome === 'answered') { $score += 100; $reason = 'answered call with the most signalling detail'; }
-			elseif ($outcome === 'failed') { $score += 35; $reason = 'failed non-call SIP transaction'; }
+			if (isset($methods['INVITE']) && $outcome === 'failed') { $score += 1000; $reason = 'failed INVITE call flow'; }
+			elseif (isset($methods['INVITE']) && ($outcome === 'busy' || $outcome === 'cancelled')) { $score += 900; $reason = "{$outcome} INVITE call flow"; }
+			elseif (isset($methods['INVITE']) && $outcome === 'incomplete_capture') { $score += 800; $reason = 'incomplete INVITE call flow'; }
+			elseif (isset($methods['INVITE']) && $outcome === 'answered') { $score += 100; $reason = 'answered INVITE call flow with the most signalling detail'; }
+			elseif ($outcome === 'failed') { $score += 35; $reason = 'failed SIP transaction'; }
 			elseif ($outcome === 'auth_challenge') { $score += 15; $reason = 'authentication challenge transaction'; }
 			if (isset($obs['answered_without_ack_seen'])) $score += 40;
 			if (isset($obs['number_or_route_not_found'])) $score += 35;
