@@ -1911,9 +1911,16 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 						$topId = $this->sanitizeForChat($top['call_id'] ?? '');
 						$outcome = $this->sanitizeForChat($top['outcome'] ?? 'unknown');
 						$outcomeLabel = ucwords(str_replace('_', ' ', $outcome));
+						if (($top['outcome'] ?? '') === 'cancelled'
+							&& !empty($top['observations'])
+							&& is_array($top['observations'])
+							&& in_array('cancelled_before_answer', $top['observations'], true)
+						) {
+							$outcomeLabel = 'Cancelled before answer';
+						}
 						$isInvite = !empty($top['is_invite_call_flow']);
 						$method = $this->sanitizeForChat($top['primary_method'] ?? '');
-						$typeLabel = $isInvite ? 'INVITE call flow' : trim(($method !== '' ? $method . ' ' : '') . 'SIP transaction');
+						$typeLabel = $isInvite ? '' : $method;
 						$msgCount = (int)($top['message_count'] ?? 0);
 						$messageLabel = $msgCount === 1 ? 'message' : 'messages';
 						$duration = $this->formatPcapFocusDuration((int)($top['duration_ms'] ?? 0));
@@ -1923,7 +1930,7 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 							$reason = $this->sanitizeForChat($top['final_status']['reason'] ?? '');
 							if ($reason !== '') $final .= ' ' . $reason;
 						}
-						$label = "{$outcomeLabel} {$typeLabel} — {$duration}, {$msgCount} {$messageLabel}{$final}";
+						$label = trim($outcomeLabel . ' ' . $typeLabel) . " — {$duration}, {$msgCount} {$messageLabel}{$final}";
 						$rawTopId = $top['call_id'] ?? '';
 						if (!empty($data['path']) && is_string($rawTopId) && $rawTopId !== '') {
 							$focusPath = $this->sanitizeForChat($data['path']);
