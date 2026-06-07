@@ -2206,7 +2206,7 @@ class PcapAnalysis extends AbstractTool {
 		if (isset($ids['check_signalling_gap_context'])) $checks[] = 'what happened around the signalling gap';
 		if (isset($ids['check_missing_ack_visibility'])) $checks[] = 'ACK routing or capture asymmetry';
 		if (empty($checks)) return '';
-		return 'The next-check framing should focus on ' . $this->joinPhraseList(array_slice($checks, 0, 3)) . ', because those checks match the derived observations rather than a separately inferred cause.';
+		return 'The next check should focus on ' . $this->joinPhraseList(array_slice($checks, 0, 3)) . ' before assuming a routing, timer, or media fault.';
 	}
 
 	private function responseCaveatSentence($facts) {
