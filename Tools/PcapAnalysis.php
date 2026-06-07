@@ -1455,6 +1455,9 @@ class PcapAnalysis extends AbstractTool {
 				$direction = $this->inferInviteLegDirection($a, $b);
 				if ($direction === null) continue;
 				$timing = $this->closestCancellationEvidenceTiming($a, $b, $direction);
+				// 250ms is the maximum gap for treating both legs as the same propagated cancellation.
+				// It is deliberately tight to avoid pairing unrelated near-simultaneous cancels on a busy PBX,
+				// and is only one of four gates: overlap, opposite PBX direction, 183 on both legs, and timing.
 				if ($timing === null || (int)$timing['delta_ms'] > 250) continue;
 
 				$related[] = [
