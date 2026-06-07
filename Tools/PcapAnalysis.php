@@ -1370,6 +1370,17 @@ class PcapAnalysis extends AbstractTool {
 		$transports = [];
 		$outcomes = [];
 		$topCalls = [];
+		$relatedCallLegs = $this->deriveRelatedInviteLegs($calls);
+		$relatedLegDirections = [];
+		foreach ($relatedCallLegs as $related) {
+			foreach (($related['legs'] ?? []) as $leg) {
+				$callId = (string)($leg['call_id'] ?? '');
+				$direction = (string)($leg['direction'] ?? '');
+				if ($callId !== '' && $direction !== '') {
+					$relatedLegDirections[$callId] = ucfirst(strtolower($direction));
+				}
+			}
+		}
 		foreach ($calls as $call) {
 			$final = $call['summary']['invite_final_status'] ?: ($call['summary']['final_status'] ?? null);
 			if ($final !== null) {
@@ -1388,6 +1399,11 @@ class PcapAnalysis extends AbstractTool {
 				$transport = $msg['transport'] ?? 'unknown';
 				$transports[$transport] = ($transports[$transport] ?? 0) + 1;
 			}
+			$friendly = $this->friendlyCallSentence($call);
+			$callId = (string)($call['call_id'] ?? '');
+			if ($friendly !== '' && isset($relatedLegDirections[$callId])) {
+				$friendly = $relatedLegDirections[$callId] . ' leg: ' . $friendly;
+			}
 			$topCalls[] = [
 				'call_id' => $call['call_id'],
 				'outcome' => $outcome,
@@ -1397,7 +1413,7 @@ class PcapAnalysis extends AbstractTool {
 				'primary_method' => $this->primarySipMethod($call['summary']['methods'] ?? []),
 				'final_status' => $call['summary']['invite_final_status'] ?: $call['summary']['final_status'],
 				'observations' => $call['summary']['observations'],
-				'friendly' => $this->friendlyCallSentence($call),
+				'friendly' => $friendly,
 			];
 		}
 		usort($topCalls, function($a, $b) {
@@ -1417,7 +1433,6 @@ class PcapAnalysis extends AbstractTool {
 		$focus = $this->deriveFocusCall($calls);
 		$inviteOutcomes = $this->countInviteOutcomes($calls);
 		$rtpSummary = $this->summariseRtpEvidence($calls);
-		$relatedCallLegs = $this->deriveRelatedInviteLegs($calls);
 		return [
 			'final_status_counts' => $finalStatusCounts,
 			'observation_counts' => $observations,
