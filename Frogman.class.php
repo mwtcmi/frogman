@@ -1989,7 +1989,12 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 						$lines[] = "  Warning: `" . $this->sanitizeForChat($warning) . "`";
 					}
 				}
-				foreach (array_slice($data['calls'] ?? [], 0, 5) as $call) {
+				$displayedCalls = array_slice($data['calls'] ?? [], 0, 5);
+				if (!empty($displayedCalls)) {
+					$lines[] = "";
+					$lines[] = "Detailed SIP analysis";
+				}
+				foreach ($displayedCalls as $call) {
 					$callId = $this->sanitizeForChat($call['call_id'] ?? '');
 					$duration = (int)($call['duration_ms'] ?? 0);
 					$count = (int)($call['message_count'] ?? 0);
