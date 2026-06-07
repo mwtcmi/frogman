@@ -1891,7 +1891,9 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 				}
 				if (!empty($data['analysis']['top_calls']) && ($data['call_count'] ?? 0) > 1) {
 					$lines[] = "";
-					$lines[] = "Focus candidates:";
+					$lines[] = "Focus";
+					$callRows = [];
+					$otherRows = [];
 					foreach (array_slice($data['analysis']['top_calls'], 0, 3) as $idx => $top) {
 						$topId = $this->sanitizeForChat($top['call_id'] ?? '');
 						$outcome = $this->sanitizeForChat($top['outcome'] ?? 'unknown');
@@ -1908,17 +1910,39 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 							$reason = $this->sanitizeForChat($top['final_status']['reason'] ?? '');
 							if ($reason !== '') $final .= ' ' . $reason;
 						}
-						$num = $idx + 1;
 						$label = "{$outcomeLabel} {$typeLabel} — {$duration}, {$msgCount} {$messageLabel}{$final}";
 						$rawTopId = $top['call_id'] ?? '';
 						if (!empty($data['path']) && is_string($rawTopId) && $rawTopId !== '') {
 							$focusPath = $this->sanitizeForChat($data['path']);
 							$focusCallId = $this->pcapCommandValue($rawTopId);
-							$lines[] = "{$num}. {{cmd:analyze pcap {$focusPath} call_id {$focusCallId}|{$label}}}";
+							$primary = "{{cmd:analyze pcap {$focusPath} call_id {$focusCallId}|{$label}}}";
 						} else {
-							$lines[] = "{$num}. {$label}";
+							$primary = $label;
 						}
-						$lines[] = "   Call-ID: `{$topId}`";
+						if ($isInvite) {
+							$callRows[] = [$primary, $topId];
+						} else {
+							$otherRows[] = [$primary, $topId];
+						}
+					}
+					$num = 0;
+					if (!empty($callRows)) {
+						$lines[] = "";
+						$lines[] = "📞 Calls found";
+						foreach ($callRows as $row) {
+							$num++;
+							$lines[] = "{$num}. {$row[0]}";
+							$lines[] = "   Call-ID: `{$row[1]}`";
+						}
+					}
+					if (!empty($otherRows)) {
+						$lines[] = "";
+						$lines[] = "⚙️ Other SIP transactions";
+						foreach ($otherRows as $row) {
+							$num++;
+							$lines[] = "{$num}. {$row[0]}";
+							$lines[] = "   Call-ID: `{$row[1]}`";
+						}
 					}
 				}
 				if (!empty($data['truncated'])) {
@@ -2076,12 +2100,6 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 								$lines[] = "- {$text}";
 							}
 						}
-					}
-					if (!empty($data['analysis']['focus']['call_id']) && !empty($data['path'])) {
-						$focusId = $this->sanitizeForChat($data['analysis']['focus']['call_id']);
-						$focusReason = $this->sanitizeForChat($data['analysis']['focus']['reason'] ?? 'focus this ladder');
-						$path = $this->sanitizeForChat($data['path']);
-						$lines[] = "{{cmd:analyze pcap {$path} call_id {$focusId}|Focus: {$focusReason}}}";
 					}
 				}
 				$this->appendPcapSummaryBlockActions($lines, 'response', null, $pcapActionPath, $pcapActionCallId, '');
