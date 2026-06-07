@@ -2009,10 +2009,10 @@ class PcapAnalysis extends AbstractTool {
 		$total = (int)($facts['call_count'] ?? 0);
 		$shown = min(5, $total);
 		if ($total > $shown) {
-			return 'The formatted response shows ' . $shown . ' of those ' . $total . ' decoded ' . $this->pluralWord($total, 'ladder') . ' in detail, so the detailed ladder discussion is scoped to the displayed subset while the counts remain aggregate.';
+			return 'This response shows ' . $shown . ' of the ' . $total . ' decoded SIP ' . $this->pluralWord($total, 'transaction') . ' in detail, while the counts and observations are calculated across the entire capture.';
 		}
 		if ($total > 0) {
-			return 'The formatted response shows the decoded ' . $this->pluralWord($total, 'ladder') . ' available in this result, so the ladder-level detail is limited to what this capture point saw.';
+			return 'This response shows the decoded SIP ' . $this->pluralWord($total, 'transaction') . ' available in this result, while counts and observations remain limited to what this capture point saw.';
 		}
 		return 'No detailed SIP ladder is available in the displayed response, so the interpretation rests on aggregate decoded fields only.';
 	}
