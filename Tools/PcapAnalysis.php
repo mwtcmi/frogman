@@ -2909,12 +2909,17 @@ class PcapAnalysis extends AbstractTool {
 		$authOnly = (int)($outcomes['auth_challenge'] ?? 0);
 
 		if ($inviteStats['total'] > 0 && ($failed || $busy || $cancelled || $incomplete)) {
-			$issues = [];
-			if ($failed) $issues[] = "{$failed} failed";
-			if ($busy) $issues[] = "{$busy} busy";
-			if ($cancelled) $issues[] = "{$cancelled} cancelled";
-			if ($incomplete) $issues[] = "{$incomplete} incomplete";
-			$lines[] = "Attention: " . implode(', ', $issues) . " INVITE call flow(s) need review.";
+			if ($cancelled && !$failed && !$busy && !$incomplete) {
+				$verb = $cancelled === 1 ? 'was' : 'were';
+				$lines[] = "Attention: {$cancelled} INVITE call flow(s) {$verb} cancelled before answer.";
+			} else {
+				$issues = [];
+				if ($failed) $issues[] = "{$failed} failed";
+				if ($busy) $issues[] = "{$busy} busy";
+				if ($cancelled) $issues[] = "{$cancelled} cancelled";
+				if ($incomplete) $issues[] = "{$incomplete} incomplete";
+				$lines[] = "Attention: " . implode(', ', $issues) . " INVITE call flow(s) need review.";
+			}
 		} elseif ($inviteStats['total'] > 0 && $answered) {
 			$lines[] = "Main result: {$answered} INVITE call flow(s) reached 200 OK, so the captured INVITE call flow(s) look successful at SIP signalling level.";
 		} elseif ($completed) {
