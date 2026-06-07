@@ -316,10 +316,10 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 	}
 
 	private function appendPcapActionSeparator(&$lines) {
-		if (!empty($lines) && end($lines) !== '') $lines[] = "";
-		$lines[] = "---";
-		$lines[] = "";
-	}
+		if (!empty($lines) && end($lines) !== '') {
+			$lines[] = "";
+		}
+	}	
 
 	private function appendPcapSummaryActions(&$lines, $item, $section = null, $callRef = null, $path = null, $callId = null, $indent = '  ') {
 		if (!is_array($item)) return;
