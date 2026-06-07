@@ -91,6 +91,7 @@ class PcapAnalysis extends AbstractTool {
 			'sip_message_count' => count($decoded['messages']),
 			'unparsed_sip_message_count' => (int)($decoded['unparsed_sip_message_count'] ?? 0),
 			'call_count' => count($calls),
+			'call_id' => $filterCallId,
 			'truncated' => $decoded['truncated'],
 			'warnings' => $decoded['warnings'],
 			'analysis' => $summary,

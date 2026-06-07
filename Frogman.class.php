@@ -1883,7 +1883,10 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 					return "**PCAP analysis unsupported** — `{$reason}`" . ($hint !== '' ? "\n`{$hint}`" : '');
 				}
 				$pcapActionPath = $data['path'] ?? '';
-				$pcapActionCallId = (!empty($data['calls']) && count($data['calls']) === 1 && !empty($data['calls'][0]['call_id'])) ? $data['calls'][0]['call_id'] : null;
+				$pcapActionCallId = (!empty($data['call_id']) && is_string($data['call_id'])) ? $data['call_id'] : null;
+				if ($pcapActionCallId === null && !empty($data['calls']) && count($data['calls']) === 1 && !empty($data['calls'][0]['call_id'])) {
+					$pcapActionCallId = $data['calls'][0]['call_id'];
+				}
 				$unparsed = (int)($data['unparsed_sip_message_count'] ?? 0);
 				$unparsedText = $unparsed > 0 ? ", {$unparsed} SIP-like " . $this->pcapPluralWord($unparsed, 'message') . " unparsed" : "";
 				$sipTransactionCount = (int)($data['analysis']['sip_transaction_count'] ?? $data['call_count'] ?? 0);
