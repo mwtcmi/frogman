@@ -1795,7 +1795,9 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 					$path = $this->sanitizeForChat($c['path']);
 					$name = $this->sanitizeForChat($c['name']);
 					$meta = $this->sanitizeForChat($c['when'] . ' · ' . round($c['size_bytes'] / 1024) . ' KB');
-					$lines[] = "  📄 {{cmd:analyze pcap {$path}|{$name} · {$meta}}}";
+					$lines[] = "";
+					$lines[] = "📄 {{cmd:analyze pcap {$path}|{$name}}}";
+					$lines[] = "   {$meta}";
 				}
 				$remaining = (int)$data['count'] - count($show);
 				if ($remaining > 0) {
