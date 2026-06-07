@@ -1716,7 +1716,7 @@ class PcapAnalysis extends AbstractTool {
 				'call_id' => $params['call_id'] ?? null,
 				'call_index' => isset($params['call_index']) ? (int)$params['call_index'] : null,
 				'call_ref' => $params['call_ref'] ?? null,
-				'result' => $this->summaryBlockActionResult($params['summary_action'], $params['section'], $items),
+				'result' => $this->summaryBlockActionResult($params['summary_action'], $params['section'], $items, $analysis, $calls),
 				'available_actions' => $this->summaryBlockActionAvailability($params['summary_action']),
 			];
 		}
@@ -1828,19 +1828,19 @@ class PcapAnalysis extends AbstractTool {
 		];
 	}
 
-	private function summaryBlockActionResult($action, $section, $items) {
+	private function summaryBlockActionResult($action, $section, $items, $analysis = null, $calls = []) {
 		if ($action === 'simplify') {
 			return [
 				'kind' => 'text',
 				'title' => 'Simplify',
-				'text' => $this->summaryBlockSimplifyText($section, $items),
+				'text' => $this->summaryBlockSimplifyText($section, $items, $analysis, $calls),
 			];
 		}
 		if ($action === 'explain') {
 			return [
 				'kind' => 'text',
 				'title' => 'Explain',
-				'text' => $this->summaryBlockExplainText($section, $items),
+				'text' => $this->summaryBlockExplainText($section, $items, $analysis, $calls),
 			];
 		}
 
@@ -1863,7 +1863,10 @@ class PcapAnalysis extends AbstractTool {
 		];
 	}
 
-	private function summaryBlockSimplifyText($section, $items) {
+	private function summaryBlockSimplifyText($section, $items, $analysis = null, $calls = []) {
+		if ($section === 'response' && is_array($analysis)) {
+			return $this->responseSimplifyNarrative($analysis);
+		}
 		$lines = [];
 		foreach ($items as $item) {
 			if (!is_array($item)) continue;
@@ -1873,7 +1876,10 @@ class PcapAnalysis extends AbstractTool {
 		return !empty($lines) ? implode("\n", $lines) : 'No simplified text is available for this block.';
 	}
 
-	private function summaryBlockExplainText($section, $items) {
+	private function summaryBlockExplainText($section, $items, $analysis = null, $calls = []) {
+		if ($section === 'response' && is_array($analysis)) {
+			return $this->responseExplainNarrative($analysis);
+		}
 		$intro = [
 			'response' => 'This explains the whole PCAP response that was displayed: aggregate counts, displayed call ladders, diagnostic hints, support summary, likely checks, and confidence limits. Omitted ladders are not treated as individually reviewed here.',
 			'diagnostic_hints' => 'These hints describe the notable observations for this call. They are confidence-scoped and should be read together, not as independent proof of a single cause.',
@@ -1910,6 +1916,272 @@ class PcapAnalysis extends AbstractTool {
 		];
 		unset($actions[$currentAction]);
 		return $actions;
+	}
+
+	private function responseSimplifyNarrative($analysis) {
+		$facts = $this->responseNarrativeFacts($analysis);
+		$body = [];
+		$body[] = $this->responseTotalSentence($facts);
+		$unparsed = $this->responseUnparsedSentence($facts);
+		if ($unparsed !== '') $body[] = $unparsed;
+		$outcome = $this->responseOutcomeSentence($facts);
+		if ($outcome !== '') $body[] = $outcome;
+		$salient = $this->responseSalientFindingSentence($facts);
+		if ($salient !== '') $body[] = $salient;
+		$caveat = $this->responseCaveatSentence($facts);
+		$sentences = array_slice(array_filter($body), 0, 3);
+		if ($caveat !== '') $sentences[] = $caveat;
+		return implode(' ', $sentences);
+	}
+
+	private function responseExplainNarrative($analysis) {
+		$facts = $this->responseNarrativeFacts($analysis);
+		$body = [];
+		$body[] = $this->responseTotalSentence($facts);
+		$body[] = $this->responseDisplayedScopeSentence($facts);
+		$unparsed = $this->responseUnparsedSentence($facts);
+		if ($unparsed !== '') $body[] = $unparsed;
+		$outcome = $this->responseOutcomeSentence($facts);
+		if ($outcome !== '') $body[] = $outcome;
+		$salient = $this->responseSalientFindingSentence($facts);
+		if ($salient !== '') $body[] = $salient;
+		$observations = $this->responseObservationSentence($facts);
+		if ($observations !== '') $body[] = $observations;
+		$rtp = $this->responseRtpSentence($facts);
+		if ($rtp !== '') $body[] = $rtp;
+		$next = $this->responseNextCheckSentence($facts);
+		if ($next !== '') $body[] = $next;
+		$caveat = $this->responseCaveatSentence($facts);
+		$sentences = array_slice(array_filter($body), 0, 6);
+		if ($caveat !== '') $sentences[] = $caveat;
+		return implode(' ', $sentences);
+	}
+
+	private function responseNarrativeFacts($analysis) {
+		$highlights = $analysis['evidence_highlights'] ?? [];
+		return [
+			'sip_message_count' => (int)($highlights['sip_message_count'] ?? 0),
+			'call_count' => (int)($highlights['call_count'] ?? 0),
+			'unparsed_message_count' => (int)($highlights['unparsed_message_count'] ?? 0),
+			'invite_outcomes' => is_array($highlights['invite_outcomes'] ?? null) ? $highlights['invite_outcomes'] : [],
+			'outcome_counts' => is_array($analysis['outcome_counts'] ?? null) ? $analysis['outcome_counts'] : [],
+			'final_status_counts' => is_array($analysis['final_status_counts'] ?? null) ? $analysis['final_status_counts'] : [],
+			'observation_counts' => is_array($analysis['observation_counts'] ?? null) ? $analysis['observation_counts'] : [],
+			'rtp_summary' => is_array($highlights['rtp_summary'] ?? null) ? $highlights['rtp_summary'] : [],
+			'support_ids' => $this->summaryItemIds($analysis['support_summary'] ?? []),
+			'next_check_ids' => $this->summaryItemIds($analysis['likely_next_checks'] ?? []),
+			'confidence_ids' => $this->summaryItemIds($analysis['confidence_notes'] ?? []),
+		];
+	}
+
+	private function responseTotalSentence($facts) {
+		$sip = (int)($facts['sip_message_count'] ?? 0);
+		$calls = (int)($facts['call_count'] ?? 0);
+		if ($sip > 0 && $calls > 0) {
+			return 'This capture contains ' . $sip . ' decoded SIP ' . $this->pluralWord($sip, 'message') . ' grouped into ' . $calls . ' ' . $this->pluralWord($calls, 'transaction or call', 'transactions or calls') . '.';
+		}
+		if ($sip > 0) {
+			return 'This capture contains ' . $sip . ' decoded SIP ' . $this->pluralWord($sip, 'message') . ', but no grouped transaction or call count is exposed in the response fields.';
+		}
+		return 'This response summarizes the decoded PCAP analysis available from the capture.';
+	}
+
+	private function responseDisplayedScopeSentence($facts) {
+		$total = (int)($facts['call_count'] ?? 0);
+		$shown = min(5, $total);
+		if ($total > $shown) {
+			return 'The formatted response shows ' . $shown . ' of those ' . $total . ' decoded ' . $this->pluralWord($total, 'ladder') . ' in detail, so the detailed ladder discussion is scoped to the displayed subset while the counts remain aggregate.';
+		}
+		if ($total > 0) {
+			return 'The formatted response shows the decoded ' . $this->pluralWord($total, 'ladder') . ' available in this result, so the ladder-level detail is limited to what this capture point saw.';
+		}
+		return 'No detailed call ladder is available in the displayed response, so the interpretation rests on aggregate decoded fields only.';
+	}
+
+	private function responseOutcomeSentence($facts) {
+		$invite = $facts['invite_outcomes'] ?? [];
+		$totalInvites = (int)($invite['total'] ?? 0);
+		if ($totalInvites > 0) {
+			$parts = [];
+			foreach (['answered' => 'answered', 'busy' => 'busy', 'failed' => 'failed', 'cancelled' => 'cancelled before answer', 'incomplete_capture' => 'incomplete in the capture'] as $key => $label) {
+				$count = (int)($invite[$key] ?? 0);
+				if ($count > 0) $parts[] = $count . ' ' . $label;
+			}
+			if (!empty($parts)) {
+				return 'Among ' . $totalInvites . ' decoded INVITE ' . $this->pluralWord($totalInvites, 'call flow') . ', ' . $this->joinPhraseList($parts) . '.';
+			}
+			return 'The decoded INVITE call-flow count is ' . $totalInvites . ', but no stronger INVITE outcome mix is exposed in the aggregate fields.';
+		}
+
+		$outcomes = [];
+		foreach (($facts['outcome_counts'] ?? []) as $outcome => $count) {
+			$count = (int)$count;
+			if ($count > 0) $outcomes[] = $count . ' ' . str_replace('_', ' ', (string)$outcome);
+		}
+		if (!empty($outcomes)) {
+			return 'The aggregate outcome mix is ' . $this->joinPhraseList($outcomes) . '.';
+		}
+		return '';
+	}
+
+	private function responseUnparsedSentence($facts) {
+		$unparsed = (int)($facts['unparsed_message_count'] ?? 0);
+		if ($unparsed <= 0) return '';
+		return $unparsed . ' SIP-like ' . $this->pluralWord($unparsed, 'payload') . ' could not be parsed into grouped SIP messages, so decoded totals may be incomplete.';
+	}
+
+	private function responseSalientFindingSentence($facts) {
+		$invite = $facts['invite_outcomes'] ?? [];
+		$obs = $facts['observation_counts'] ?? [];
+		$rtpStatus = $facts['rtp_summary']['status_counts'] ?? [];
+		if (!empty($invite['failed'])) {
+			$status = $this->dominantFailureStatusText($facts['final_status_counts'] ?? []);
+			$statusText = $status !== '' ? '; the most common >=400 final status is ' . $status : '';
+			return (int)$invite['failed'] . ' INVITE ' . $this->pluralWord((int)$invite['failed'], 'call flow') . ' ended in failure response evidence' . $statusText . ', so the final SIP status counts are the strongest signalling clue.';
+		}
+		if (!empty($invite['cancelled'])) {
+			$count = (int)$invite['cancelled'];
+			if (!empty($rtpStatus['rtp_not_seen_before_cancellation'])) {
+				return $count . ' INVITE ' . $this->pluralWord($count, 'call flow') . ' ended with cancellation before answer, and ' . (int)$rtpStatus['rtp_not_seen_before_cancellation'] . ' cancelled ' . $this->pluralWord((int)$rtpStatus['rtp_not_seen_before_cancellation'], 'flow') . ' had negotiated media without matching RTP at this capture point before cancellation.';
+			}
+			return $count . ' INVITE ' . $this->pluralWord($count, 'call flow') . ' ended with cancellation evidence before answer.';
+		}
+		if (!empty($rtpStatus['rtp_one_direction_only'])) {
+			$count = (int)$rtpStatus['rtp_one_direction_only'];
+			return 'RTP was visible in only one captured direction for ' . $count . ' ' . $this->pluralWord($count, 'flow') . ', which makes capture-point media visibility a central finding.';
+		}
+		if (!empty($rtpStatus['rtp_absent_despite_answer'])) {
+			$count = (int)$rtpStatus['rtp_absent_despite_answer'];
+			return $count . ' answered ' . $this->pluralWord($count, 'flow') . ' had negotiated media but no matching RTP at this capture point.';
+		}
+		if (!empty($obs['large_signalling_gap'])) {
+			$count = (int)$obs['large_signalling_gap'];
+			return $count . ' ' . $this->pluralWord($count, 'flow') . ' had a multi-second signalling gap flagged by the aggregate observations.';
+		}
+		if (!empty($invite['answered'])) {
+			$count = (int)$invite['answered'];
+			return $count . ' INVITE ' . $this->pluralWord($count, 'call flow') . ' reached a 2xx final response at SIP signalling level.';
+		}
+		return '';
+	}
+
+	private function dominantFailureStatusText($statuses) {
+		if (!is_array($statuses) || empty($statuses)) return '';
+		$best = null;
+		foreach ($statuses as $status) {
+			if (!is_array($status)) continue;
+			$code = (int)($status['code'] ?? 0);
+			if ($code < 400) continue;
+			if ($best === null || (int)($status['count'] ?? 0) > (int)($best['count'] ?? 0)) {
+				$best = $status;
+			}
+		}
+		if ($best === null) return '';
+		$code = (int)($best['code'] ?? 0);
+		$reason = trim((string)($best['reason'] ?? ''));
+		return trim($code . ' ' . $reason);
+	}
+
+	private function responseRtpSentence($facts) {
+		$rtp = $facts['rtp_summary'] ?? [];
+		$statusCounts = $rtp['status_counts'] ?? [];
+		if (empty($statusCounts)) return '';
+		$parts = [];
+		foreach ([
+			'rtp_both_directions' => ['flow with RTP in both directions', 'flows with RTP in both directions'],
+			'rtp_one_direction_only' => ['flow with RTP in one direction only', 'flows with RTP in one direction only'],
+			'rtp_absent_despite_answer' => ['answered flow without RTP at this capture point', 'answered flows without RTP at this capture point'],
+			'rtp_not_seen_before_cancellation' => ['cancelled flow without RTP before cancellation', 'cancelled flows without RTP before cancellation'],
+			'rtp_not_seen_at_capture_point' => ['flow without RTP at this capture point', 'flows without RTP at this capture point'],
+		] as $key => $labels) {
+			$count = (int)($statusCounts[$key] ?? 0);
+			if ($count > 0) $parts[] = $count . ' ' . $this->pluralWord($count, $labels[0], $labels[1]);
+		}
+		if (empty($parts)) return '';
+		return 'The RTP summary is capture-point scoped: ' . $this->joinPhraseList($parts) . '.';
+	}
+
+	private function responseObservationSentence($facts) {
+		$obs = $facts['observation_counts'] ?? [];
+		if (empty($obs)) return '';
+		$parts = [];
+		foreach ([
+			'cancelled_before_answer' => ['cancellation before answer', 'cancellations before answer'],
+			'failed_final_response' => ['failure final response', 'failure final responses'],
+			'large_signalling_gap' => ['multi-second signalling gap', 'multi-second signalling gaps'],
+			'retransmissions_seen' => ['repeated SIP message pattern', 'repeated SIP message patterns'],
+			'answered_without_ack_seen' => ['answered call without ACK visibility', 'answered calls without ACK visibility'],
+			'private_sdp_connection_address' => ['private SDP media address', 'private SDP media addresses'],
+			'rtp_one_direction_only' => ['one-way RTP visibility finding', 'one-way RTP visibility findings'],
+			'rtp_absent_despite_answer' => ['answered call without RTP at this capture point', 'answered calls without RTP at this capture point'],
+		] as $key => $labels) {
+			$count = (int)($obs[$key] ?? 0);
+			if ($count > 0) $parts[] = $count . ' ' . $this->pluralWord($count, $labels[0], $labels[1]);
+		}
+		if (empty($parts)) return '';
+		return 'The observation counts specifically flag ' . $this->joinPhraseList(array_slice($parts, 0, 3)) . '.';
+	}
+
+	private function responseNextCheckSentence($facts) {
+		$ids = array_flip($facts['next_check_ids'] ?? []);
+		$checks = [];
+		if (isset($ids['check_nat_media_addresses'])) $checks[] = 'media-address/NAT configuration';
+		if (isset($ids['check_one_direction_rtp_visibility'])) $checks[] = 'whether this capture point should see both RTP directions';
+		if (isset($ids['check_capture_location_for_absent_rtp'])) $checks[] = 'capture placement for RTP visibility';
+		if (isset($ids['check_retransmission_context'])) $checks[] = 'the retransmission context around repeated SIP messages';
+		if (isset($ids['check_signalling_gap_context'])) $checks[] = 'what happened around the signalling gap';
+		if (isset($ids['check_missing_ack_visibility'])) $checks[] = 'ACK routing or capture asymmetry';
+		if (empty($checks)) return '';
+		return 'The next-check framing should focus on ' . $this->joinPhraseList(array_slice($checks, 0, 3)) . ', because those checks match the derived observations rather than a separately inferred cause.';
+	}
+
+	private function responseCaveatSentence($facts) {
+		$confidenceIds = array_flip($facts['confidence_ids'] ?? []);
+		$supportIds = array_flip($facts['support_ids'] ?? []);
+		$invite = $facts['invite_outcomes'] ?? [];
+		$rtpStatus = $facts['rtp_summary']['status_counts'] ?? [];
+		$caveats = [];
+		if (!empty($rtpStatus) || isset($confidenceIds['rtp_capture_point_scope'])) {
+			$caveats[] = 'RTP findings only describe packets visible at this capture point';
+		}
+		if (!empty($rtpStatus['rtp_absent_despite_answer']) || isset($confidenceIds['rtp_absence_not_proof'])) {
+			$caveats[] = 'absence of RTP here is not proof that media did not exist elsewhere';
+		}
+		if (!empty($invite['cancelled']) || isset($supportIds['cancelled_invites'])) {
+			$caveats[] = 'cancellation evidence does not prove the human or upstream reason for cancellation';
+		}
+		if (!empty($facts['unparsed_message_count']) || isset($confidenceIds['unparsed_sip_scope'])) {
+			$caveats[] = 'unparsed SIP-like payloads may make totals incomplete';
+		}
+		if (empty($caveats)) {
+			$caveats[] = 'the interpretation remains limited to decoded packets in this capture';
+		}
+		return 'Caveat: ' . $this->joinPhraseList(array_slice(array_values(array_unique($caveats)), 0, 3)) . '.';
+	}
+
+	private function summaryItemIds($items) {
+		$ids = [];
+		if (!is_array($items)) return $ids;
+		foreach ($items as $item) {
+			if (is_array($item) && !empty($item['id'])) $ids[] = (string)$item['id'];
+		}
+		return array_values(array_unique($ids));
+	}
+
+	private function pluralWord($count, $singular, $plural = null) {
+		return ((int)$count === 1) ? $singular : ($plural ?? $singular . 's');
+	}
+
+	private function joinPhraseList($parts) {
+		$parts = array_values(array_filter($parts, function($part) {
+			return (string)$part !== '';
+		}));
+		$count = count($parts);
+		if ($count === 0) return '';
+		if ($count === 1) return $parts[0];
+		if ($count === 2) return $parts[0] . ' and ' . $parts[1];
+		$last = array_pop($parts);
+		return implode(', ', $parts) . ', and ' . $last;
 	}
 
 	private function responseSummaryActionItems($calls, $analysis) {
