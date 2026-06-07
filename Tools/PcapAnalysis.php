@@ -1377,7 +1377,7 @@ class PcapAnalysis extends AbstractTool {
 				$callId = (string)($leg['call_id'] ?? '');
 				$direction = (string)($leg['direction'] ?? '');
 				if ($callId !== '' && $direction !== '') {
-					$relatedLegDirections[$callId] = ucfirst(strtolower($direction));
+					$relatedLegDirections[$callId] = strtolower($direction);
 				}
 			}
 		}
@@ -1400,7 +1400,7 @@ class PcapAnalysis extends AbstractTool {
 				$transports[$transport] = ($transports[$transport] ?? 0) + 1;
 			}
 			$callId = (string)($call['call_id'] ?? '');
-			$friendly = $this->friendlyCallSentence($call, strtolower($relatedLegDirections[$callId] ?? ''));
+			$friendly = $this->friendlyCallSentence($call, $relatedLegDirections[$callId] ?? '');
 			$topCalls[] = [
 				'call_id' => $call['call_id'],
 				'outcome' => $outcome,
