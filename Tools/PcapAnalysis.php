@@ -1725,6 +1725,7 @@ class PcapAnalysis extends AbstractTool {
 				'call_id' => $params['call_id'] ?? null,
 				'call_index' => isset($params['call_index']) ? (int)$params['call_index'] : null,
 				'call_ref' => $params['call_ref'] ?? null,
+				'focus_context' => $this->summaryActionFocusContext($params, $calls),
 				'result' => $this->summaryBlockActionResult($params['summary_action'], $params['section'], $items, $analysis, $calls),
 				'available_actions' => $this->summaryBlockActionAvailability($params['summary_action']),
 			];
@@ -1751,6 +1752,7 @@ class PcapAnalysis extends AbstractTool {
 			'call_id' => $params['call_id'] ?? null,
 			'call_index' => isset($params['call_index']) ? (int)$params['call_index'] : null,
 			'call_ref' => $params['call_ref'] ?? null,
+			'focus_context' => $this->summaryActionFocusContext($params, $calls),
 			'confidence' => $item['confidence'] ?? null,
 			'text' => $item['text'] ?? null,
 			'observations' => $item['observations'] ?? [],
@@ -1758,6 +1760,84 @@ class PcapAnalysis extends AbstractTool {
 			'result' => $this->summaryActionResult($params['summary_action'], $item),
 			'available_actions' => $this->summaryActionAvailability($item, $params['summary_action']),
 		];
+	}
+
+	private function summaryActionFocusContext($params, $calls) {
+		$call = $this->summaryActionFocusedCall($params, $calls);
+		$callId = isset($params['call_id']) ? trim((string)$params['call_id']) : '';
+		if ($callId === '' && is_array($call) && !empty($call['call_id'])) {
+			$callId = (string)$call['call_id'];
+		}
+		if ($callId === '') return null;
+
+		$context = ['call_id' => $callId];
+		if (is_array($call)) {
+			$label = $this->summaryActionFocusLabel($call);
+			if ($label !== '') $context['label'] = $label;
+		}
+		return $context;
+	}
+
+	private function summaryActionFocusedCall($params, $calls) {
+		if (!is_array($calls) || empty($calls)) return null;
+		if (isset($params['call_id'])) {
+			$callId = trim((string)$params['call_id']);
+			if ($callId !== '') {
+				foreach ($calls as $call) {
+					if (strcasecmp((string)($call['call_id'] ?? ''), $callId) === 0) return $call;
+				}
+			}
+		}
+		if (isset($params['call_ref']) && $params['call_ref'] !== null) {
+			$callRef = strtolower((string)$params['call_ref']);
+			foreach ($calls as $call) {
+				if ($this->callRef($call['call_id'] ?? '') === $callRef) return $call;
+			}
+		}
+		if (isset($params['call_index']) && $params['call_index'] !== null) {
+			$idx = (int)$params['call_index'];
+			if (isset($calls[$idx]) && is_array($calls[$idx])) return $calls[$idx];
+		}
+		return null;
+	}
+
+	private function summaryActionFocusLabel($call) {
+		$summary = is_array($call['summary'] ?? null) ? $call['summary'] : [];
+		$outcome = trim((string)($summary['outcome'] ?? ''));
+		$outcomeLabel = $outcome !== '' ? ucwords(str_replace('_', ' ', $outcome)) : 'SIP transaction';
+		if ($outcome === 'cancelled'
+			&& !empty($summary['observations'])
+			&& is_array($summary['observations'])
+			&& in_array('cancelled_before_answer', $summary['observations'], true)
+		) {
+			$outcomeLabel = 'Cancelled before answer';
+		}
+
+		$methods = is_array($summary['methods'] ?? null) ? $summary['methods'] : [];
+		$method = $this->primarySipMethod($methods);
+		$typeLabel = in_array('INVITE', $methods, true) ? '' : $method;
+		$prefix = trim($outcomeLabel . ' ' . $typeLabel);
+		if ($prefix === '') $prefix = 'SIP transaction';
+
+		$messageCount = (int)($call['message_count'] ?? 0);
+		$messageLabel = $messageCount === 1 ? 'message' : 'messages';
+		$label = $prefix . ' — ' . $this->formatSummaryActionFocusDuration((int)($call['duration_ms'] ?? 0)) . ', ' . $messageCount . ' ' . $messageLabel;
+
+		$final = ($summary['invite_final_status'] ?? null) ?: ($summary['final_status'] ?? null);
+		if (is_array($final) && isset($final['code'])) {
+			$finalText = trim((int)$final['code'] . ' ' . (string)($final['reason'] ?? ''));
+			if ($finalText !== '') $label .= ', final ' . $finalText;
+		}
+
+		return $label;
+	}
+
+	private function formatSummaryActionFocusDuration($durationMs) {
+		$durationMs = max(0, (int)$durationMs);
+		if ($durationMs < 1000) return $durationMs . 'ms';
+		$seconds = $durationMs / 1000;
+		if ($seconds < 10) return rtrim(rtrim(number_format($seconds, 2, '.', ''), '0'), '.') . 's';
+		return rtrim(rtrim(number_format($seconds, 1, '.', ''), '0'), '.') . 's';
 	}
 
 	private function findSummaryActionItem($calls, $analysis, $section, $itemId, $callIndex, $callRef) {

@@ -402,6 +402,16 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 		}
 	}
 
+	private function appendPcapActionFocusContext(&$lines, $data) {
+		$context = $data['focus_context'] ?? null;
+		if (!is_array($context)) return;
+		$label = isset($context['label']) && is_string($context['label']) ? $this->sanitizeForChat($context['label']) : '';
+		$callId = isset($context['call_id']) && is_string($context['call_id']) ? $this->sanitizeForChat($context['call_id']) : '';
+		if ($label === '' && $callId === '') return;
+		if ($label !== '') $lines[] = "Focused item: {$label}";
+		if ($callId !== '') $lines[] = "Call-ID: `{$callId}`";
+	}
+
 	private function pcapCallRef($callId) {
 		$callId = (string)$callId;
 		return $callId === '' ? null : substr(sha1($callId), 0, 12);
@@ -1835,6 +1845,7 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 					$title = $this->sanitizeForChat($result['title'] ?? 'PCAP Action');
 					$confidence = !empty($data['confidence']) ? ' · confidence `' . $this->sanitizeForChat($data['confidence']) . '`' : '';
 					$lines = ["**{$title}**{$confidence}"];
+					$this->appendPcapActionFocusContext($lines, $data);
 					if (($result['kind'] ?? '') === 'evidence') {
 						$items = $result['items'] ?? [];
 						if (empty($items)) {
