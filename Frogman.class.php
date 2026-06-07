@@ -406,10 +406,12 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 		$context = $data['focus_context'] ?? null;
 		if (is_array($context)) {
 			$label = isset($context['label']) && is_string($context['label']) ? $this->sanitizeForChat($context['label']) : '';
+			$friendly = isset($context['friendly']) && is_string($context['friendly']) ? $this->sanitizeForChat($context['friendly']) : '';
 			$callId = isset($context['call_id']) && is_string($context['call_id']) ? $this->sanitizeForChat($context['call_id']) : '';
 			if ($label !== '') $lines[] = "Focused item: {$label}";
+			if ($friendly !== '') $lines[] = "**{$friendly}**";
 			if ($callId !== '') $lines[] = "Call-ID: `{$callId}`";
-			if ($label !== '' || $callId !== '') return;
+			if ($label !== '' || $friendly !== '' || $callId !== '') return;
 		}
 		if (($data['section'] ?? '') === 'response' && ($data['item_id'] ?? '') === 'block') {
 			$lines[] = "Scope: Full PCAP response";

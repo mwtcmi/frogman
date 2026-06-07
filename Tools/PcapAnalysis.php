@@ -2040,6 +2040,8 @@ class PcapAnalysis extends AbstractTool {
 		if (is_array($call)) {
 			$label = $this->summaryActionFocusLabel($call);
 			if ($label !== '') $context['label'] = $label;
+			$friendly = $this->friendlyCallSentence($call);
+			if ($friendly !== '') $context['friendly'] = $friendly;
 		}
 		return $context;
 	}
@@ -2104,6 +2106,53 @@ class PcapAnalysis extends AbstractTool {
 		$seconds = $durationMs / 1000;
 		if ($seconds < 10) return rtrim(rtrim(number_format($seconds, 2, '.', ''), '0'), '.') . 's';
 		return rtrim(rtrim(number_format($seconds, 1, '.', ''), '0'), '.') . 's';
+	}
+
+	private function friendlyCallSentence(array $call): string {
+		$summary = is_array($call['summary'] ?? null) ? $call['summary'] : [];
+		$methods = is_array($summary['methods'] ?? null) ? $summary['methods'] : [];
+		if (!in_array('INVITE', $methods, true)) return '';
+
+		$caller = $this->friendlySipEndpoint($summary['from'] ?? '');
+		$callee = $this->friendlySipEndpoint($summary['to'] ?? '');
+		$duration = $this->formatSummaryActionFocusDuration((int)($call['duration_ms'] ?? 0));
+		$time = '';
+		if (!empty($call['first_time'])) {
+			$epoch = strtotime((string)$call['first_time']);
+			if ($epoch !== false) $time = date('H:i', $epoch);
+		}
+		$atTime = $time !== '' ? ' at ' . $time : '';
+
+		switch ((string)($summary['outcome'] ?? '')) {
+			case 'answered':
+				return "{$caller} called {$callee}{$atTime}, connected, talk time {$duration}.";
+			case 'cancelled':
+				return "{$caller} tried to call {$callee}{$atTime}, cancelled after {$duration} before it was answered.";
+			case 'busy':
+				return "{$caller} called {$callee}{$atTime}, the line was busy.";
+			case 'failed':
+				return "{$caller} tried to call {$callee}{$atTime}, the attempt failed.";
+			case 'incomplete_capture':
+				return "{$caller} tried to call {$callee}{$atTime}; the capture does not show how it ended.";
+		}
+		return '';
+	}
+
+	private function friendlySipEndpoint($value): string {
+		$value = trim((string)$value);
+		$user = '';
+		$host = '';
+		if ($value !== '') {
+			if (preg_match('/<\s*sips?:([^@\s;>]*)(?:@([^\s;>]+))?/i', $value, $m)
+				|| preg_match('/\bsips?:([^@\s;>]*)(?:@([^\s;>]+))?/i', $value, $m)
+			) {
+				$user = (string)($m[1] ?? '');
+				$host = (string)($m[2] ?? '');
+			}
+		}
+		if ($user !== '' && preg_match('/^\+?\d+$/', $user)) return $user;
+		if ($host !== '') return $host;
+		return 'an endpoint';
 	}
 
 	private function findSummaryActionItem($calls, $analysis, $section, $itemId, $callIndex, $callRef) {
