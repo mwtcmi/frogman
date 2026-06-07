@@ -1909,7 +1909,15 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 							if ($reason !== '') $final .= ' ' . $reason;
 						}
 						$num = $idx + 1;
-						$lines[] = "{$num}. {$outcomeLabel} {$typeLabel} — {$duration}, {$msgCount} {$messageLabel}{$final}";
+						$label = "{$outcomeLabel} {$typeLabel} — {$duration}, {$msgCount} {$messageLabel}{$final}";
+						$rawTopId = $top['call_id'] ?? '';
+						if (!empty($data['path']) && is_string($rawTopId) && $rawTopId !== '') {
+							$focusPath = $this->sanitizeForChat($data['path']);
+							$focusCallId = $this->pcapCommandValue($rawTopId);
+							$lines[] = "{$num}. {{cmd:analyze pcap {$focusPath} call_id {$focusCallId}|{$label}}}";
+						} else {
+							$lines[] = "{$num}. {$label}";
+						}
 						$lines[] = "   Call-ID: `{$topId}`";
 					}
 				}
