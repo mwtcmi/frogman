@@ -394,6 +394,14 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 		return $callId === '' ? null : substr(sha1($callId), 0, 12);
 	}
 
+	private function formatPcapFocusDuration($durationMs) {
+		$durationMs = max(0, (int)$durationMs);
+		if ($durationMs < 1000) return $durationMs . 'ms';
+		$seconds = $durationMs / 1000;
+		if ($seconds < 10) return rtrim(rtrim(number_format($seconds, 2, '.', ''), '0'), '.') . 's';
+		return rtrim(rtrim(number_format($seconds, 1, '.', ''), '0'), '.') . 's';
+	}
+
 	private function pcapCommandValue($value) {
 		$value = preg_replace('/[\x00-\x1F\x7F]/', '', (string)$value);
 		return str_replace(['|', '}}', '{{'], ['/', '} }', '{ {'], $value);
@@ -1884,21 +1892,25 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 				if (!empty($data['analysis']['top_calls']) && ($data['call_count'] ?? 0) > 1) {
 					$lines[] = "";
 					$lines[] = "Focus candidates:";
-					foreach (array_slice($data['analysis']['top_calls'], 0, 3) as $top) {
+					foreach (array_slice($data['analysis']['top_calls'], 0, 3) as $idx => $top) {
 						$topId = $this->sanitizeForChat($top['call_id'] ?? '');
 						$outcome = $this->sanitizeForChat($top['outcome'] ?? 'unknown');
+						$outcomeLabel = ucwords(str_replace('_', ' ', $outcome));
 						$isInvite = !empty($top['is_invite_call_flow']);
 						$method = $this->sanitizeForChat($top['primary_method'] ?? '');
 						$typeLabel = $isInvite ? 'INVITE call flow' : trim(($method !== '' ? $method . ' ' : '') . 'SIP transaction');
 						$msgCount = (int)($top['message_count'] ?? 0);
-						$duration = (int)($top['duration_ms'] ?? 0);
+						$messageLabel = $msgCount === 1 ? 'message' : 'messages';
+						$duration = $this->formatPcapFocusDuration((int)($top['duration_ms'] ?? 0));
 						$final = '';
 						if (!empty($top['final_status'])) {
-							$finalMethod = $this->sanitizeForChat($top['final_status']['cseq_method'] ?? '');
-							$final = ' final `' . (int)$top['final_status']['code'] . ' ' . $this->sanitizeForChat($top['final_status']['reason'] ?? '') . '`';
-							if (!$isInvite && $finalMethod !== '') $final .= ' CSeq `' . $finalMethod . '`';
+							$final = ', final ' . (int)$top['final_status']['code'];
+							$reason = $this->sanitizeForChat($top['final_status']['reason'] ?? '');
+							if ($reason !== '') $final .= ' ' . $reason;
 						}
-						$lines[] = "  `{$topId}` — {$outcome} {$typeLabel}, {$msgCount} msg, {$duration}ms{$final}";
+						$num = $idx + 1;
+						$lines[] = "{$num}. {$outcomeLabel} {$typeLabel} — {$duration}, {$msgCount} {$messageLabel}{$final}";
+						$lines[] = "   Call-ID: `{$topId}`";
 					}
 				}
 				if (!empty($data['truncated'])) {
