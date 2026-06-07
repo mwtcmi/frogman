@@ -1399,11 +1399,8 @@ class PcapAnalysis extends AbstractTool {
 				$transport = $msg['transport'] ?? 'unknown';
 				$transports[$transport] = ($transports[$transport] ?? 0) + 1;
 			}
-			$friendly = $this->friendlyCallSentence($call);
 			$callId = (string)($call['call_id'] ?? '');
-			if ($friendly !== '' && isset($relatedLegDirections[$callId])) {
-				$friendly = $relatedLegDirections[$callId] . ' leg: ' . $friendly;
-			}
+			$friendly = $this->friendlyCallSentence($call, strtolower($relatedLegDirections[$callId] ?? ''));
 			$topCalls[] = [
 				'call_id' => $call['call_id'],
 				'outcome' => $outcome,
@@ -2124,7 +2121,7 @@ class PcapAnalysis extends AbstractTool {
 		return rtrim(rtrim(number_format($seconds, 1, '.', ''), '0'), '.') . 's';
 	}
 
-	private function friendlyCallSentence(array $call): string {
+	private function friendlyCallSentence(array $call, string $direction = ''): string {
 		$summary = is_array($call['summary'] ?? null) ? $call['summary'] : [];
 		$methods = is_array($summary['methods'] ?? null) ? $summary['methods'] : [];
 		if (!in_array('INVITE', $methods, true)) return '';
@@ -2138,6 +2135,23 @@ class PcapAnalysis extends AbstractTool {
 			if ($epoch !== false) $time = date('H:i', $epoch);
 		}
 		$atTime = $time !== '' ? ' at ' . $time : '';
+
+		if ($direction === 'inbound' || $direction === 'outbound') {
+			$prefix = ucfirst($direction) . ' leg from ' . $caller . ' to ' . $callee . $atTime;
+			switch ((string)($summary['outcome'] ?? '')) {
+				case 'answered':
+					return "{$prefix}, connected, talk time {$duration}.";
+				case 'cancelled':
+					return "{$prefix}, cancelled after {$duration} before answer.";
+				case 'busy':
+					return "{$prefix}, the line was busy.";
+				case 'failed':
+					return "{$prefix}, the attempt failed.";
+				case 'incomplete_capture':
+					return "{$prefix}; the capture does not show how it ended.";
+			}
+			return '';
+		}
 
 		switch ((string)($summary['outcome'] ?? '')) {
 			case 'answered':
