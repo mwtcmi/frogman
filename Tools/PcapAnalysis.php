@@ -1933,10 +1933,13 @@ class PcapAnalysis extends AbstractTool {
 		$body[] = $this->responseTotalSentence($facts);
 		$unparsed = $this->responseUnparsedSentence($facts);
 		if ($unparsed !== '') $body[] = $unparsed;
-		$outcome = $this->responseOutcomeSentence($facts);
-		if ($outcome !== '') $body[] = $outcome;
 		$salient = $this->responseSalientFindingSentence($facts);
-		if ($salient !== '') $body[] = $salient;
+		if ($salient !== '') {
+			$body[] = $salient;
+		} else {
+			$outcome = $this->responseOutcomeSentence($facts);
+			if ($outcome !== '') $body[] = $outcome;
+		}
 		$caveat = $this->responseCaveatSentence($facts);
 		$sentences = array_slice(array_filter($body), 0, 3);
 		if ($caveat !== '') $sentences[] = $caveat;
@@ -1950,13 +1953,17 @@ class PcapAnalysis extends AbstractTool {
 		$body[] = $this->responseDisplayedScopeSentence($facts);
 		$unparsed = $this->responseUnparsedSentence($facts);
 		if ($unparsed !== '') $body[] = $unparsed;
-		$outcome = $this->responseOutcomeSentence($facts);
-		if ($outcome !== '') $body[] = $outcome;
 		$salient = $this->responseSalientFindingSentence($facts);
-		if ($salient !== '') $body[] = $salient;
-		$observations = $this->responseObservationSentence($facts);
+		if ($salient !== '') {
+			$body[] = $salient;
+		} else {
+			$outcome = $this->responseOutcomeSentence($facts);
+			if ($outcome !== '') $body[] = $outcome;
+		}
+		$covered = $this->responseSalientCoveredKeys($facts);
+		$observations = $this->responseObservationSentence($facts, $covered['observations']);
 		if ($observations !== '') $body[] = $observations;
-		$rtp = $this->responseRtpSentence($facts);
+		$rtp = $this->responseRtpSentence($facts, $covered['rtp_statuses']);
 		if ($rtp !== '') $body[] = $rtp;
 		$next = $this->responseNextCheckSentence($facts);
 		if ($next !== '') $body[] = $next;
@@ -2053,10 +2060,13 @@ class PcapAnalysis extends AbstractTool {
 		}
 		if (!empty($invite['cancelled'])) {
 			$count = (int)$invite['cancelled'];
+			$total = (int)($invite['total'] ?? 0);
+			$cancelledText = $this->responseInviteOutcomePhrase($count, $total, 'cancelled before answer');
 			if (!empty($rtpStatus['rtp_not_seen_before_cancellation'])) {
-				return $count . ' INVITE ' . $this->pluralWord($count, 'call flow') . ' ended with cancellation before answer, and ' . (int)$rtpStatus['rtp_not_seen_before_cancellation'] . ' cancelled ' . $this->pluralWord((int)$rtpStatus['rtp_not_seen_before_cancellation'], 'flow') . ' had negotiated media without matching RTP at this capture point before cancellation.';
+				$rtpCount = (int)$rtpStatus['rtp_not_seen_before_cancellation'];
+				return $cancelledText . ', and ' . $rtpCount . ' cancelled ' . $this->pluralWord($rtpCount, 'flow') . ' had negotiated media without matching RTP at this capture point before cancellation.';
 			}
-			return $count . ' INVITE ' . $this->pluralWord($count, 'call flow') . ' ended with cancellation evidence before answer.';
+			return $cancelledText . '.';
 		}
 		if (!empty($rtpStatus['rtp_one_direction_only'])) {
 			$count = (int)$rtpStatus['rtp_one_direction_only'];
@@ -2077,6 +2087,54 @@ class PcapAnalysis extends AbstractTool {
 		return '';
 	}
 
+	private function responseInviteOutcomePhrase($count, $total, $outcomeText) {
+		$count = (int)$count;
+		$total = (int)$total;
+		$verb = $count === 1 ? 'was' : 'were';
+		if ($total > 0 && $count === $total) {
+			if ($count === 1) return 'The decoded INVITE call flow was ' . $outcomeText;
+			if ($count === 2) return 'Both decoded INVITE call flows were ' . $outcomeText;
+			return 'All ' . $count . ' decoded INVITE call ' . $this->pluralWord($count, 'flow') . ' were ' . $outcomeText;
+		}
+		if ($total > 0) {
+			return $count . ' of ' . $total . ' decoded INVITE call ' . $this->pluralWord($total, 'flow') . ' ' . $verb . ' ' . $outcomeText;
+		}
+		return $count . ' INVITE ' . $this->pluralWord($count, 'call flow') . ' ' . $verb . ' ' . $outcomeText;
+	}
+
+	private function responseSalientCoveredKeys($facts) {
+		$invite = $facts['invite_outcomes'] ?? [];
+		$obs = $facts['observation_counts'] ?? [];
+		$rtpStatus = $facts['rtp_summary']['status_counts'] ?? [];
+		$covered = ['observations' => [], 'rtp_statuses' => []];
+		if (!empty($invite['failed'])) {
+			$covered['observations'][] = 'failed_final_response';
+			return $covered;
+		}
+		if (!empty($invite['cancelled'])) {
+			$covered['observations'][] = 'cancelled_before_answer';
+			if (!empty($rtpStatus['rtp_not_seen_before_cancellation'])) {
+				$covered['rtp_statuses'][] = 'rtp_not_seen_before_cancellation';
+			}
+			return $covered;
+		}
+		if (!empty($rtpStatus['rtp_one_direction_only'])) {
+			$covered['observations'][] = 'rtp_one_direction_only';
+			$covered['rtp_statuses'][] = 'rtp_one_direction_only';
+			return $covered;
+		}
+		if (!empty($rtpStatus['rtp_absent_despite_answer'])) {
+			$covered['observations'][] = 'rtp_absent_despite_answer';
+			$covered['rtp_statuses'][] = 'rtp_absent_despite_answer';
+			return $covered;
+		}
+		if (!empty($obs['large_signalling_gap'])) {
+			$covered['observations'][] = 'large_signalling_gap';
+			return $covered;
+		}
+		return $covered;
+	}
+
 	private function dominantFailureStatusText($statuses) {
 		if (!is_array($statuses) || empty($statuses)) return '';
 		$best = null;
@@ -2094,10 +2152,11 @@ class PcapAnalysis extends AbstractTool {
 		return trim($code . ' ' . $reason);
 	}
 
-	private function responseRtpSentence($facts) {
+	private function responseRtpSentence($facts, $omitStatuses = []) {
 		$rtp = $facts['rtp_summary'] ?? [];
 		$statusCounts = $rtp['status_counts'] ?? [];
 		if (empty($statusCounts)) return '';
+		$omit = array_flip($omitStatuses);
 		$parts = [];
 		foreach ([
 			'rtp_both_directions' => ['flow with RTP in both directions', 'flows with RTP in both directions'],
@@ -2106,6 +2165,7 @@ class PcapAnalysis extends AbstractTool {
 			'rtp_not_seen_before_cancellation' => ['cancelled flow without RTP before cancellation', 'cancelled flows without RTP before cancellation'],
 			'rtp_not_seen_at_capture_point' => ['flow without RTP at this capture point', 'flows without RTP at this capture point'],
 		] as $key => $labels) {
+			if (isset($omit[$key])) continue;
 			$count = (int)($statusCounts[$key] ?? 0);
 			if ($count > 0) $parts[] = $count . ' ' . $this->pluralWord($count, $labels[0], $labels[1]);
 		}
@@ -2113,9 +2173,10 @@ class PcapAnalysis extends AbstractTool {
 		return 'The RTP summary is capture-point scoped: ' . $this->joinPhraseList($parts) . '.';
 	}
 
-	private function responseObservationSentence($facts) {
+	private function responseObservationSentence($facts, $omitObservations = []) {
 		$obs = $facts['observation_counts'] ?? [];
 		if (empty($obs)) return '';
+		$omit = array_flip($omitObservations);
 		$parts = [];
 		foreach ([
 			'cancelled_before_answer' => ['cancellation before answer', 'cancellations before answer'],
@@ -2127,6 +2188,7 @@ class PcapAnalysis extends AbstractTool {
 			'rtp_one_direction_only' => ['one-way RTP visibility finding', 'one-way RTP visibility findings'],
 			'rtp_absent_despite_answer' => ['answered call without RTP at this capture point', 'answered calls without RTP at this capture point'],
 		] as $key => $labels) {
+			if (isset($omit[$key])) continue;
 			$count = (int)($obs[$key] ?? 0);
 			if ($count > 0) $parts[] = $count . ' ' . $this->pluralWord($count, $labels[0], $labels[1]);
 		}
