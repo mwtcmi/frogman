@@ -315,6 +315,12 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 		return str_replace(['`', '{{', '['], ["'", '{ {', '('], $value);
 	}
 
+	private function appendPcapActionSeparator(&$lines) {
+		if (!empty($lines) && end($lines) !== '') $lines[] = "";
+		$lines[] = "---";
+		$lines[] = "";
+	}
+
 	private function appendPcapSummaryActions(&$lines, $item, $section = null, $callRef = null, $path = null, $callId = null, $indent = '  ') {
 		if (!is_array($item)) return;
 		$id = $item['id'] ?? null;
@@ -333,7 +339,10 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 		if ($hasSimplified) $actions[] = "{{cmd:pcap action simplify {$target}|Simplify}}";
 		if ($hasReExplained) $actions[] = "{{cmd:pcap action explain {$target}|Explain}}";
 		if ($hasEvidence) $actions[] = "{{cmd:pcap action evidence {$target}|Evidence}}";
-		if (!empty($actions)) $lines[] = "{$indent}Actions: " . implode(' · ', $actions);
+		if (!empty($actions)) {
+			$this->appendPcapActionSeparator($lines);
+			$lines[] = "{$indent}Actions: " . implode(' · ', $actions);
+		}
 	}
 
 	private function appendPcapSummaryBlockActions(&$lines, $section = null, $callRef = null, $path = null, $callId = null, $indent = '  ') {
@@ -348,6 +357,7 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 			"{{cmd:pcap action explain {$target}|Explain}}",
 			"{{cmd:pcap action evidence {$target}|Evidence}}",
 		];
+		$this->appendPcapActionSeparator($lines);
 		$lines[] = "{$indent}Actions: " . implode(' · ', $actions);
 	}
 
@@ -386,7 +396,10 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 			if ($label === '') continue;
 			$actions[] = "{{cmd:pcap action {$commandNames[$action]} {$target}|{$label}}}";
 		}
-		if (!empty($actions)) $lines[] = "{$indent}Actions: " . implode(' · ', $actions);
+		if (!empty($actions)) {
+			$this->appendPcapActionSeparator($lines);
+			$lines[] = "{$indent}Actions: " . implode(' · ', $actions);
+		}
 	}
 
 	private function pcapCallRef($callId) {
