@@ -797,6 +797,10 @@ class PcapAnalysis extends AbstractTool {
 			$call['summary']['observations'] = $this->deriveObservations($call);
 			$call['summary']['outcome'] = $this->deriveOutcome($call);
 			$call['summary']['diagnostic_hints'] = $this->deriveDiagnosticHints($call);
+			$call['summary']['timing'] = [
+				'first_epoch_ms' => (int)round($call['_first_epoch'] * 1000),
+				'last_epoch_ms' => (int)round($call['_last_epoch'] * 1000),
+			];
 			unset($call['_seen_messages']);
 			unset($call['_first_epoch'], $call['_last_epoch']);
 		}
@@ -1411,6 +1415,7 @@ class PcapAnalysis extends AbstractTool {
 		$focus = $this->deriveFocusCall($calls);
 		$inviteOutcomes = $this->countInviteOutcomes($calls);
 		$rtpSummary = $this->summariseRtpEvidence($calls);
+		$relatedCallLegs = $this->deriveRelatedInviteLegs($calls);
 		return [
 			'final_status_counts' => $finalStatusCounts,
 			'observation_counts' => $observations,
@@ -1420,16 +1425,171 @@ class PcapAnalysis extends AbstractTool {
 			'sip_transaction_count' => count($calls),
 			'top_calls' => array_slice($topCalls, 0, 10),
 			'reader_summary' => $this->deriveReaderSummary($calls, $decoded, $outcomes, $observations),
-			'support_summary' => $this->deriveSupportSummary($calls, $decoded, $outcomes, $observations, $inviteOutcomes, $rtpSummary),
+			'support_summary' => $this->deriveSupportSummary($calls, $decoded, $outcomes, $observations, $inviteOutcomes, $rtpSummary, $relatedCallLegs),
 			'likely_next_checks' => $this->deriveLikelyNextChecks($calls, $observations, $rtpSummary),
 			'confidence_notes' => $this->deriveConfidenceNotes($calls, $decoded, $observations, $rtpSummary),
-			'evidence_highlights' => $this->deriveEvidenceHighlights($calls, $decoded, $inviteOutcomes, $finalStatusCounts, $observations, $rtpSummary, $focus),
+			'evidence_highlights' => $this->deriveEvidenceHighlights($calls, $decoded, $inviteOutcomes, $finalStatusCounts, $observations, $rtpSummary, $focus, $relatedCallLegs),
+			'related_call_legs' => $relatedCallLegs,
 			'focus' => $focus,
 			'packet_count' => $decoded['packet_count'],
 		];
 	}
 
-	private function deriveSupportSummary($calls, $decoded, $outcomes, $observations, $inviteStats, $rtpSummary) {
+	private function deriveRelatedInviteLegs($calls) {
+		if (!is_array($calls) || count($calls) < 2) return [];
+		$candidates = [];
+		foreach ($calls as $call) {
+			$facts = $this->inviteLegCorrelationFacts($call);
+			if ($facts !== null) $candidates[] = $facts;
+		}
+		if (count($candidates) < 2) return [];
+
+		$related = [];
+		for ($i = 0; $i < count($candidates); $i++) {
+			for ($j = $i + 1; $j < count($candidates); $j++) {
+				$a = $candidates[$i];
+				$b = $candidates[$j];
+				if (empty($a['has_183']) || empty($b['has_183'])) continue;
+				if (!$this->windowsOverlap($a['start_ms'], $a['end_ms'], $b['start_ms'], $b['end_ms'])) continue;
+				$delta = abs($a['cancel_ms'] - $b['cancel_ms']);
+				if ($delta > 250) continue;
+				$direction = $this->inferInviteLegDirection($a, $b);
+				if ($direction === null) continue;
+
+				$related[] = [
+					'call_ids' => [$a['call_id'], $b['call_id']],
+					'legs' => [
+						[
+							'call_id' => $a['call_id'],
+							'direction' => $direction['a'],
+							'invite' => $a['invite'],
+							'cancel' => $a['cancel'],
+							'final_status' => $a['final_status'],
+							'has_183' => $a['has_183'],
+							'release_reason' => $a['release_reason'],
+						],
+						[
+							'call_id' => $b['call_id'],
+							'direction' => $direction['b'],
+							'invite' => $b['invite'],
+							'cancel' => $b['cancel'],
+							'final_status' => $b['final_status'],
+							'has_183' => $b['has_183'],
+							'release_reason' => $b['release_reason'],
+						],
+					],
+					'cancel_delta_ms' => $delta,
+					'local_endpoint' => $direction['local_endpoint'],
+					'basis' => ['overlapping_windows', 'opposite_pbx_direction', 'near_simultaneous_cancel_or_487'],
+				];
+			}
+		}
+
+		usort($related, function($a, $b) {
+			return (int)($a['cancel_delta_ms'] ?? 0) <=> (int)($b['cancel_delta_ms'] ?? 0);
+		});
+		return array_slice($related, 0, 3);
+	}
+
+	private function inviteLegCorrelationFacts($call) {
+		$summary = is_array($call['summary'] ?? null) ? $call['summary'] : [];
+		$methods = array_flip($summary['methods'] ?? []);
+		$observations = $summary['observations'] ?? [];
+		$final = ($summary['invite_final_status'] ?? null) ?: ($summary['final_status'] ?? null);
+		if (!isset($methods['INVITE'])) return null;
+		if (empty($observations) || !in_array('cancelled_before_answer', $observations, true)) return null;
+		if (!is_array($final) || (int)($final['code'] ?? 0) !== 487) return null;
+
+		$messages = is_array($call['messages'] ?? null) ? $call['messages'] : [];
+		$timing = is_array($summary['timing'] ?? null) ? $summary['timing'] : [];
+		$firstMs = isset($timing['first_epoch_ms']) ? (int)$timing['first_epoch_ms'] : $this->isoTimeMs($call['first_time'] ?? null);
+		$lastMs = isset($timing['last_epoch_ms']) ? (int)$timing['last_epoch_ms'] : $this->isoTimeMs($call['last_time'] ?? null);
+		if ($firstMs === null || $lastMs === null || empty($messages)) return null;
+
+		$invite = null;
+		$cancel = null;
+		$finalMsg = null;
+		$has183 = false;
+		foreach ($messages as $msg) {
+			$method = $this->messageRequestMethod($msg);
+			$statusCode = isset($msg['status_code']) ? (int)$msg['status_code'] : null;
+			$cseqMethod = $this->messageCseqMethod($msg);
+			if ($invite === null && $method === 'INVITE') $invite = $this->messageEndpointFacts($msg);
+			if ($cancel === null && $method === 'CANCEL') $cancel = $this->messageEndpointFacts($msg);
+			if ($statusCode === 183) $has183 = true;
+			if ($statusCode === 487 && ($cseqMethod === null || $cseqMethod === 'INVITE')) $finalMsg = $this->messageEndpointFacts($msg);
+		}
+		if ($invite === null || ($cancel === null && $finalMsg === null)) return null;
+		$cancelEvent = $cancel ?? $finalMsg;
+
+		return [
+			'call_id' => (string)($call['call_id'] ?? ''),
+			'start_ms' => $firstMs,
+			'end_ms' => $lastMs,
+			'cancel_ms' => $firstMs + (int)($cancelEvent['t_ms'] ?? 0),
+			'invite' => $invite,
+			'cancel' => $cancelEvent,
+			'final_status' => $final,
+			'has_183' => $has183,
+			'release_reason' => $summary['release_reason'] ?? null,
+		];
+	}
+
+	private function messageRequestMethod($msg) {
+		if (($msg['type'] ?? '') !== 'request') return null;
+		if (!empty($msg['method'])) return (string)$msg['method'];
+		if (!empty($msg['line']) && preg_match('/^([A-Z][A-Z0-9_-]+)\s+/', (string)$msg['line'], $m)) return $m[1];
+		return null;
+	}
+
+	private function messageCseqMethod($msg) {
+		if (!empty($msg['cseq']) && preg_match('/\b([A-Z][A-Z0-9_-]+)\s*$/', (string)$msg['cseq'], $m)) return $m[1];
+		return null;
+	}
+
+	private function messageEndpointFacts($msg) {
+		return [
+			't_ms' => (int)($msg['t_ms'] ?? 0),
+			'src' => (string)($msg['src'] ?? ''),
+			'dst' => (string)($msg['dst'] ?? ''),
+			'line' => (string)($msg['line'] ?? ''),
+		];
+	}
+
+	private function inferInviteLegDirection($a, $b) {
+		$aSrc = $this->endpointHost($a['invite']['src'] ?? '');
+		$aDst = $this->endpointHost($a['invite']['dst'] ?? '');
+		$bSrc = $this->endpointHost($b['invite']['src'] ?? '');
+		$bDst = $this->endpointHost($b['invite']['dst'] ?? '');
+		if ($aDst !== '' && $aDst === $bSrc && $aSrc !== $bDst) {
+			return ['a' => 'inbound', 'b' => 'outbound', 'local_endpoint' => $aDst];
+		}
+		if ($bDst !== '' && $bDst === $aSrc && $bSrc !== $aDst) {
+			return ['a' => 'outbound', 'b' => 'inbound', 'local_endpoint' => $bDst];
+		}
+		return null;
+	}
+
+	private function endpointHost($endpoint) {
+		$endpoint = trim((string)$endpoint);
+		if ($endpoint === '') return '';
+		if (preg_match('/^\[([^\]]+)\](?::\d+)?$/', $endpoint, $m)) return strtolower($m[1]);
+		if (substr_count($endpoint, ':') === 1 && preg_match('/^(.+):\d+$/', $endpoint, $m)) return strtolower($m[1]);
+		return strtolower($endpoint);
+	}
+
+	private function isoTimeMs($time) {
+		if (!is_string($time) || $time === '') return null;
+		$epoch = strtotime($time);
+		if ($epoch === false) return null;
+		return (int)$epoch * 1000;
+	}
+
+	private function windowsOverlap($aStart, $aEnd, $bStart, $bEnd) {
+		return max((int)$aStart, (int)$bStart) <= min((int)$aEnd, (int)$bEnd);
+	}
+
+	private function deriveSupportSummary($calls, $decoded, $outcomes, $observations, $inviteStats, $rtpSummary, $relatedCallLegs = []) {
 		$lines = [];
 		$totalInvites = (int)($inviteStats['total'] ?? 0);
 		$answered = (int)($inviteStats['answered'] ?? 0);
@@ -1484,6 +1644,17 @@ class PcapAnalysis extends AbstractTool {
 				"{$incomplete} captured INVITE " . $this->pluralWord($incomplete, 'call flow') . " did not include a final response, so the capture may be incomplete, asymmetric, or too short for that flow.",
 				'medium',
 				['invite_outcomes.incomplete_capture']
+			);
+		}
+		foreach ($relatedCallLegs as $related) {
+			if (!is_array($related)) continue;
+			$delta = (int)($related['cancel_delta_ms'] ?? 0);
+			$lines[] = $this->supportLine(
+				'possible_related_invite_legs',
+				"Possible related call legs: an inbound INVITE call flow and an outbound INVITE call flow were cancelled within {$delta}ms of each other. This is consistent with the PBX propagating cancellation between bridged or forwarded call legs, but the capture does not prove the application-level reason.",
+				'medium',
+				['related_call_legs', 'cancelled_before_answer', 'final_status_counts'],
+				$this->relatedInviteLegEvidenceText($related)
 			);
 		}
 
@@ -1670,7 +1841,7 @@ class PcapAnalysis extends AbstractTool {
 		return $this->enrichSummaryLines($notes, $calls, $rtpSummary);
 	}
 
-	private function deriveEvidenceHighlights($calls, $decoded, $inviteOutcomes, $finalStatusCounts, $observations, $rtpSummary, $focus) {
+	private function deriveEvidenceHighlights($calls, $decoded, $inviteOutcomes, $finalStatusCounts, $observations, $rtpSummary, $focus, $relatedCallLegs = []) {
 		return [
 			'sip_message_count' => count($decoded['messages'] ?? []),
 			'call_count' => count($calls),
@@ -1682,16 +1853,50 @@ class PcapAnalysis extends AbstractTool {
 			'rtp_summary' => $rtpSummary,
 			'key_observations' => $this->explainObservationCounts($observations),
 			'focus_call' => $focus,
+			'related_call_legs' => $relatedCallLegs,
 		];
 	}
 
-	private function supportLine($id, $text, $confidence, $evidence) {
-		return [
+	private function relatedInviteLegEvidenceText($related) {
+		if (!is_array($related)) return [];
+		$lines = [];
+		$callIds = [];
+		foreach ($related['call_ids'] ?? [] as $callId) {
+			if ((string)$callId !== '') $callIds[] = (string)$callId;
+		}
+		if (!empty($callIds)) $lines[] = 'Related Call-IDs: ' . implode(' and ', $callIds) . '.';
+		$legParts = [];
+		foreach ($related['legs'] ?? [] as $leg) {
+			if (!is_array($leg)) continue;
+			$direction = (string)($leg['direction'] ?? 'unknown direction');
+			$callId = (string)($leg['call_id'] ?? '');
+			$final = is_array($leg['final_status'] ?? null) ? $leg['final_status'] : [];
+			$finalText = trim((int)($final['code'] ?? 0) . ' ' . (string)($final['reason'] ?? ''));
+			$has183 = !empty($leg['has_183']) ? ', 183 seen' : '';
+			$reason = !empty($leg['release_reason']) ? ', Reason ' . (string)$leg['release_reason'] : '';
+			$legParts[] = trim($direction . ' ' . $callId . ' final ' . $finalText . $has183 . $reason);
+		}
+		if (!empty($legParts)) $lines[] = 'Leg facts: ' . implode('; ', $legParts) . '.';
+		$delta = (int)($related['cancel_delta_ms'] ?? 0);
+		$local = (string)($related['local_endpoint'] ?? '');
+		$lines[] = 'Cancellation timing difference: ' . $delta . 'ms.';
+		if ($local !== '') $lines[] = 'Direction basis: INVITE legs use shared PBX-side endpoint ' . $local . ' in opposite directions.';
+		$basis = $related['basis'] ?? [];
+		if (is_array($basis) && !empty($basis)) $lines[] = 'Basis: ' . implode(', ', $basis) . '.';
+		return $lines;
+	}
+
+	private function supportLine($id, $text, $confidence, $evidence, $evidenceText = null) {
+		$line = [
 			'id' => $id,
 			'text' => $text,
 			'confidence' => $confidence,
 			'evidence' => array_values($evidence),
 		];
+		if (is_array($evidenceText) && !empty($evidenceText)) {
+			$line['evidence_text'] = array_values($evidenceText);
+		}
+		return $line;
 	}
 
 	private function normalizeSummaryAction($action) {
