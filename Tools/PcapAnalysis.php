@@ -1451,10 +1451,10 @@ class PcapAnalysis extends AbstractTool {
 				$b = $candidates[$j];
 				if (empty($a['has_183']) || empty($b['has_183'])) continue;
 				if (!$this->windowsOverlap($a['start_ms'], $a['end_ms'], $b['start_ms'], $b['end_ms'])) continue;
-				$delta = abs($a['cancel_ms'] - $b['cancel_ms']);
-				if ($delta > 250) continue;
 				$direction = $this->inferInviteLegDirection($a, $b);
 				if ($direction === null) continue;
+				$timing = $this->closestCancellationEvidenceTiming($a, $b, $direction);
+				if ($timing === null || (int)$timing['delta_ms'] > 250) continue;
 
 				$related[] = [
 					'call_ids' => [$a['call_id'], $b['call_id']],
@@ -1464,6 +1464,7 @@ class PcapAnalysis extends AbstractTool {
 							'direction' => $direction['a'],
 							'invite' => $a['invite'],
 							'cancel' => $a['cancel'],
+							'final_response' => $a['final_response'],
 							'final_status' => $a['final_status'],
 							'has_183' => $a['has_183'],
 							'release_reason' => $a['release_reason'],
@@ -1473,12 +1474,14 @@ class PcapAnalysis extends AbstractTool {
 							'direction' => $direction['b'],
 							'invite' => $b['invite'],
 							'cancel' => $b['cancel'],
+							'final_response' => $b['final_response'],
 							'final_status' => $b['final_status'],
 							'has_183' => $b['has_183'],
 							'release_reason' => $b['release_reason'],
 						],
 					],
-					'cancel_delta_ms' => $delta,
+					'cancel_delta_ms' => (int)$timing['delta_ms'],
+					'timing_basis' => $timing,
 					'local_endpoint' => $direction['local_endpoint'],
 					'basis' => ['overlapping_windows', 'opposite_pbx_direction', 'near_simultaneous_cancel_or_487'],
 				];
@@ -1520,15 +1523,18 @@ class PcapAnalysis extends AbstractTool {
 			if ($statusCode === 487 && ($cseqMethod === null || $cseqMethod === 'INVITE')) $finalMsg = $this->messageEndpointFacts($msg);
 		}
 		if ($invite === null || ($cancel === null && $finalMsg === null)) return null;
-		$cancelEvent = $cancel ?? $finalMsg;
+		$cancellationEvents = [];
+		if ($cancel !== null) $cancellationEvents[] = ['kind' => 'CANCEL', 'event' => $cancel, 'abs_ms' => $firstMs + (int)($cancel['t_ms'] ?? 0)];
+		if ($finalMsg !== null) $cancellationEvents[] = ['kind' => '487 final response', 'event' => $finalMsg, 'abs_ms' => $firstMs + (int)($finalMsg['t_ms'] ?? 0)];
 
 		return [
 			'call_id' => (string)($call['call_id'] ?? ''),
 			'start_ms' => $firstMs,
 			'end_ms' => $lastMs,
-			'cancel_ms' => $firstMs + (int)($cancelEvent['t_ms'] ?? 0),
 			'invite' => $invite,
-			'cancel' => $cancelEvent,
+			'cancel' => $cancel,
+			'final_response' => $finalMsg,
+			'cancellation_events' => $cancellationEvents,
 			'final_status' => $final,
 			'has_183' => $has183,
 			'release_reason' => $summary['release_reason'] ?? null,
@@ -1568,6 +1574,44 @@ class PcapAnalysis extends AbstractTool {
 			return ['a' => 'outbound', 'b' => 'inbound', 'local_endpoint' => $bDst];
 		}
 		return null;
+	}
+
+	private function closestCancellationEvidenceTiming($a, $b, $direction) {
+		$best = null;
+		foreach ($a['cancellation_events'] ?? [] as $aEvent) {
+			if (!is_array($aEvent) || !isset($aEvent['abs_ms'])) continue;
+			foreach ($b['cancellation_events'] ?? [] as $bEvent) {
+				if (!is_array($bEvent) || !isset($bEvent['abs_ms'])) continue;
+				$delta = abs((int)$aEvent['abs_ms'] - (int)$bEvent['abs_ms']);
+				if ($best !== null && $delta >= (int)$best['delta_ms']) continue;
+				$best = [
+					'delta_ms' => $delta,
+					'events' => [
+						[
+							'call_id' => $a['call_id'],
+							'direction' => $direction['a'],
+							'kind' => (string)($aEvent['kind'] ?? 'cancellation evidence'),
+							't_ms' => (int)($aEvent['event']['t_ms'] ?? 0),
+							'abs_ms' => (int)$aEvent['abs_ms'],
+							'line' => (string)($aEvent['event']['line'] ?? ''),
+							'src' => (string)($aEvent['event']['src'] ?? ''),
+							'dst' => (string)($aEvent['event']['dst'] ?? ''),
+						],
+						[
+							'call_id' => $b['call_id'],
+							'direction' => $direction['b'],
+							'kind' => (string)($bEvent['kind'] ?? 'cancellation evidence'),
+							't_ms' => (int)($bEvent['event']['t_ms'] ?? 0),
+							'abs_ms' => (int)$bEvent['abs_ms'],
+							'line' => (string)($bEvent['event']['line'] ?? ''),
+							'src' => (string)($bEvent['event']['src'] ?? ''),
+							'dst' => (string)($bEvent['event']['dst'] ?? ''),
+						],
+					],
+				];
+			}
+		}
+		return $best;
 	}
 
 	private function endpointHost($endpoint) {
@@ -1651,7 +1695,7 @@ class PcapAnalysis extends AbstractTool {
 			$delta = (int)($related['cancel_delta_ms'] ?? 0);
 			$lines[] = $this->supportLine(
 				'possible_related_invite_legs',
-				"Possible related call legs: an inbound INVITE call flow and an outbound INVITE call flow were cancelled within {$delta}ms of each other. This is consistent with the PBX propagating cancellation between bridged or forwarded call legs, but the capture does not prove the application-level reason.",
+				"Possible related call legs: an inbound INVITE call flow and an outbound INVITE call flow had cancellation evidence within {$delta}ms of each other. This is consistent with the PBX propagating cancellation between bridged or forwarded call legs, but the capture does not prove the application-level reason.",
 				'medium',
 				['related_call_legs', 'cancelled_before_answer', 'final_status_counts'],
 				$this->relatedInviteLegEvidenceText($related)
@@ -1879,7 +1923,20 @@ class PcapAnalysis extends AbstractTool {
 		if (!empty($legParts)) $lines[] = 'Leg facts: ' . implode('; ', $legParts) . '.';
 		$delta = (int)($related['cancel_delta_ms'] ?? 0);
 		$local = (string)($related['local_endpoint'] ?? '');
-		$lines[] = 'Cancellation timing difference: ' . $delta . 'ms.';
+		$timing = is_array($related['timing_basis'] ?? null) ? $related['timing_basis'] : [];
+		$timingEvents = [];
+		foreach ($timing['events'] ?? [] as $event) {
+			if (!is_array($event)) continue;
+			$direction = (string)($event['direction'] ?? 'unknown direction');
+			$kind = (string)($event['kind'] ?? 'cancellation evidence');
+			$tMs = (int)($event['t_ms'] ?? 0);
+			$line = (string)($event['line'] ?? '');
+			$src = (string)($event['src'] ?? '');
+			$dst = (string)($event['dst'] ?? '');
+			$endpoint = ($src !== '' || $dst !== '') ? ' ' . trim($src . ' -> ' . $dst) : '';
+			$timingEvents[] = trim($direction . ' ' . $kind . ' at +' . $tMs . 'ms' . $endpoint . ($line !== '' ? ' (' . $line . ')' : ''));
+		}
+		$lines[] = 'Timing basis: cancellation evidence difference ' . $delta . 'ms' . (!empty($timingEvents) ? ' from ' . implode(' and ', $timingEvents) : '') . '.';
 		if ($local !== '') $lines[] = 'Direction basis: INVITE legs use shared PBX-side endpoint ' . $local . ' in opposite directions.';
 		$basis = $related['basis'] ?? [];
 		if (is_array($basis) && !empty($basis)) $lines[] = 'Basis: ' . implode(', ', $basis) . '.';
