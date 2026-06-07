@@ -1904,7 +1904,7 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 				}
 				if (!empty($data['analysis']['top_calls']) && ($data['call_count'] ?? 0) > 1) {
 					$lines[] = "";
-					$lines[] = "Focus";
+					$lines[] = "Call picker";
 					$callRows = [];
 					$otherRows = [];
 					foreach (array_slice($data['analysis']['top_calls'], 0, 3) as $idx => $top) {
