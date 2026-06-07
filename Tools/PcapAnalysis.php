@@ -1397,6 +1397,7 @@ class PcapAnalysis extends AbstractTool {
 				'primary_method' => $this->primarySipMethod($call['summary']['methods'] ?? []),
 				'final_status' => $call['summary']['invite_final_status'] ?: $call['summary']['final_status'],
 				'observations' => $call['summary']['observations'],
+				'friendly' => $this->friendlyCallSentence($call),
 			];
 		}
 		usort($topCalls, function($a, $b) {

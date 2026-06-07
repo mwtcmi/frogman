@@ -1964,10 +1964,11 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 						} else {
 							$primary = $label;
 						}
+						$friendly = isset($top['friendly']) && is_string($top['friendly']) ? $this->sanitizeForChat($top['friendly']) : '';
 						if ($isInvite) {
-							$callRows[] = [$primary, $topId];
+							$callRows[] = [$primary, $topId, $friendly];
 						} else {
-							$otherRows[] = [$primary, $topId];
+							$otherRows[] = [$primary, $topId, $friendly];
 						}
 					}
 					$num = 0;
@@ -1978,6 +1979,7 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 							$num++;
 							$lines[] = "{$num}. {$row[0]}";
 							$lines[] = "   Call-ID: `{$row[1]}`";
+							if (!empty($row[2])) $lines[] = "   **{$row[2]}**";
 						}
 					}
 					if (!empty($otherRows)) {
@@ -1987,6 +1989,7 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 							$num++;
 							$lines[] = "{$num}. {$row[0]}";
 							$lines[] = "   Call-ID: `{$row[1]}`";
+							if (!empty($row[2])) $lines[] = "   **{$row[2]}**";
 						}
 					}
 				}
