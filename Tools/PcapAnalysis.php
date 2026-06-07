@@ -1332,7 +1332,7 @@ class PcapAnalysis extends AbstractTool {
 		foreach ($streams as $stream) {
 			foreach ($stream['sequence_notes'] ?? [] as $note) {
 				if ($note === 'sequence wrap/reorder seen, loss not estimated') {
-					$note = 'sequence wrap/reorder seen, loss not estimated for affected stream(s)';
+					$note = 'sequence wrap/reorder seen, loss not estimated for affected streams';
 				}
 				$notes[$note] = $note;
 			}
@@ -1449,7 +1449,7 @@ class PcapAnalysis extends AbstractTool {
 		if ($answered > 0) {
 			$lines[] = $this->supportLine(
 				'answered_invites',
-				"{$answered} captured INVITE call flow(s) reached a 2xx final response at SIP signalling level.",
+				"{$answered} captured INVITE " . $this->pluralWord($answered, 'call flow') . " reached a 2xx final response at SIP signalling level.",
 				'high',
 				['invite_outcomes.answered', 'final_status_counts']
 			);
@@ -1457,7 +1457,7 @@ class PcapAnalysis extends AbstractTool {
 		if ($busy > 0) {
 			$lines[] = $this->supportLine(
 				'busy_invites',
-				"{$busy} captured INVITE call flow(s) include a busy response.",
+				"{$busy} captured INVITE " . $this->pluralWord($busy, 'call flow') . ($busy === 1 ? " includes" : " include") . " a busy response.",
 				'high',
 				['invite_outcomes.busy', 'observation_counts.busy_response']
 			);
@@ -1465,7 +1465,7 @@ class PcapAnalysis extends AbstractTool {
 		if ($failed > 0) {
 			$lines[] = $this->supportLine(
 				'failed_invites',
-				"{$failed} captured INVITE call flow(s) ended in failure responses; the strongest signalling evidence is the final SIP response and any Reason header.",
+				"{$failed} captured INVITE " . $this->pluralWord($failed, 'call flow') . " ended in failure responses; the strongest signalling evidence is the final SIP response and any Reason header.",
 				'high',
 				['invite_outcomes.failed', 'final_status_counts']
 			);
@@ -1473,7 +1473,7 @@ class PcapAnalysis extends AbstractTool {
 		if ($cancelled > 0) {
 			$lines[] = $this->supportLine(
 				'cancelled_invites',
-				"{$cancelled} captured INVITE call flow(s) ended with cancellation evidence before answer.",
+				"{$cancelled} captured INVITE " . $this->pluralWord($cancelled, 'call flow') . " ended with cancellation evidence before answer.",
 				'medium',
 				['invite_outcomes.cancelled', 'observation_counts.cancelled_before_answer']
 			);
@@ -1481,7 +1481,7 @@ class PcapAnalysis extends AbstractTool {
 		if ($incomplete > 0) {
 			$lines[] = $this->supportLine(
 				'incomplete_invites',
-				"{$incomplete} captured INVITE call flow(s) did not include a final response, so the capture may be incomplete, asymmetric, or too short for that flow.",
+				"{$incomplete} captured INVITE " . $this->pluralWord($incomplete, 'call flow') . " did not include a final response, so the capture may be incomplete, asymmetric, or too short for that flow.",
 				'medium',
 				['invite_outcomes.incomplete_capture']
 			);
@@ -1491,7 +1491,7 @@ class PcapAnalysis extends AbstractTool {
 		if (!empty($answeredRtp['rtp_both_directions'])) {
 			$lines[] = $this->supportLine(
 				'answered_rtp_both_directions',
-				"For {$answeredRtp['rtp_both_directions']} answered call flow(s), RTP was captured in both directions at this capture point.",
+				"For {$answeredRtp['rtp_both_directions']} answered " . $this->pluralWord($answeredRtp['rtp_both_directions'], 'call flow') . ", RTP was captured in both directions at this capture point.",
 				$this->rtpStatusConfidence($rtpSummary, 'rtp_both_directions'),
 				['rtp_summary.answered_status_counts.rtp_both_directions']
 			);
@@ -1499,7 +1499,7 @@ class PcapAnalysis extends AbstractTool {
 		if (!empty($answeredRtp['rtp_one_direction_only'])) {
 			$lines[] = $this->supportLine(
 				'answered_rtp_one_direction_only',
-				"For {$answeredRtp['rtp_one_direction_only']} answered call flow(s), RTP was captured in one direction only. This is consistent with possible media visibility asymmetry, but does not prove what either endpoint heard.",
+				"For {$answeredRtp['rtp_one_direction_only']} answered " . $this->pluralWord($answeredRtp['rtp_one_direction_only'], 'call flow') . ", RTP was captured in one direction only. This is consistent with possible media visibility asymmetry, but does not prove what either endpoint heard.",
 				$this->rtpStatusConfidence($rtpSummary, 'rtp_one_direction_only'),
 				['rtp_summary.answered_status_counts.rtp_one_direction_only', 'observation_counts.rtp_one_direction_only']
 			);
@@ -1507,7 +1507,7 @@ class PcapAnalysis extends AbstractTool {
 		if (!empty($answeredRtp['rtp_absent_despite_answer'])) {
 			$lines[] = $this->supportLine(
 				'answered_rtp_absent',
-				"For {$answeredRtp['rtp_absent_despite_answer']} answered call flow(s), no RTP seen at this capture point despite successful signalling and negotiated media. This does not prove that no media existed; direct media may have bypassed the PBX or capture location.",
+				"For {$answeredRtp['rtp_absent_despite_answer']} answered " . $this->pluralWord($answeredRtp['rtp_absent_despite_answer'], 'call flow') . ", no RTP seen at this capture point despite successful signalling and negotiated media. This does not prove that no media existed; direct media may have bypassed the PBX or capture location.",
 				'low',
 				['rtp_summary.answered_status_counts.rtp_absent_despite_answer', 'observation_counts.rtp_absent_despite_answer']
 			);
@@ -1516,7 +1516,7 @@ class PcapAnalysis extends AbstractTool {
 		if (!empty($rtpStatusCounts['rtp_not_seen_before_cancellation'])) {
 			$lines[] = $this->supportLine(
 				'rtp_not_seen_before_cancellation',
-				"For {$rtpStatusCounts['rtp_not_seen_before_cancellation']} cancelled call flow(s), SDP media was negotiated but no matching RTP was seen at this capture point before cancellation.",
+				"For {$rtpStatusCounts['rtp_not_seen_before_cancellation']} cancelled " . $this->pluralWord($rtpStatusCounts['rtp_not_seen_before_cancellation'], 'call flow') . ", SDP media was negotiated but no matching RTP was seen at this capture point before cancellation.",
 				$this->rtpStatusConfidence($rtpSummary, 'rtp_not_seen_before_cancellation'),
 				['rtp_summary.status_counts.rtp_not_seen_before_cancellation']
 			);
@@ -1524,7 +1524,7 @@ class PcapAnalysis extends AbstractTool {
 		if (!empty($rtpStatusCounts['rtp_not_seen_at_capture_point'])) {
 			$lines[] = $this->supportLine(
 				'rtp_not_seen_at_capture_point',
-				"For {$rtpStatusCounts['rtp_not_seen_at_capture_point']} call flow(s), SDP media was negotiated but no matching RTP was seen at this capture point.",
+				"For {$rtpStatusCounts['rtp_not_seen_at_capture_point']} " . $this->pluralWord($rtpStatusCounts['rtp_not_seen_at_capture_point'], 'call flow') . ", SDP media was negotiated but no matching RTP was seen at this capture point.",
 				$this->rtpStatusConfidence($rtpSummary, 'rtp_not_seen_at_capture_point'),
 				['rtp_summary.status_counts.rtp_not_seen_at_capture_point']
 			);
@@ -2371,14 +2371,14 @@ class PcapAnalysis extends AbstractTool {
 		}
 		$items[] = [
 			'id' => 'response_displayed_calls',
-			'text' => "The formatted response displays {$displayedCount} of {$totalCalls} decoded SIP ladder(s).",
+			'text' => "The formatted response displays {$displayedCount} of {$totalCalls} decoded SIP " . $this->pluralWord($totalCalls, 'ladder') . ".",
 			'confidence' => 'medium',
 			'simplified' => $totalCalls > $displayedCount
-				? "This view shows {$displayedCount} of {$totalCalls} decoded SIP ladder(s); focus a Call-ID to inspect omitted ladders."
-				: "This view shows the decoded SIP ladder(s) available in this response.",
+				? "This view shows {$displayedCount} of {$totalCalls} decoded SIP " . $this->pluralWord($totalCalls, 'ladder') . "; focus a Call-ID to inspect omitted ladders."
+				: "This view shows the decoded SIP " . $this->pluralWord($totalCalls, 'ladder') . " available in this response.",
 			're_explained' => $totalCalls > $displayedCount
-				? "Only {$displayedCount} of {$totalCalls} decoded SIP ladder(s) are shown in detail. The action response discusses those displayed ladders plus aggregate counts, without pretending to review hidden omitted ladders individually."
-				: "The displayed SIP ladder section covers the decoded SIP transaction(s) available in this response. Each ladder-level statement remains limited to the SIP and RTP packets visible at this capture point.",
+				? "Only {$displayedCount} of {$totalCalls} decoded SIP " . $this->pluralWord($totalCalls, 'ladder') . " " . $this->pluralWord($displayedCount, 'is', 'are') . " shown in detail. The action response discusses those displayed ladders plus aggregate counts, without pretending to review hidden omitted ladders individually."
+				: "The displayed SIP ladder section covers the decoded SIP " . $this->pluralWord($totalCalls, 'transaction') . " available in this response. Each ladder-level statement remains limited to the SIP and RTP packets visible at this capture point.",
 			'evidence_text' => $displayedEvidence,
 			'evidence_refs' => ['displayed_calls', 'top_calls'],
 		];
@@ -2401,7 +2401,7 @@ class PcapAnalysis extends AbstractTool {
 		if ($hintCount > 0) {
 			$items[] = [
 				'id' => 'response_diagnostic_hints',
-				'text' => "Displayed calls include {$hintCount} diagnostic hint(s).",
+				'text' => "Displayed calls include {$hintCount} diagnostic " . $this->pluralWord($hintCount, 'hint') . ".",
 				'confidence' => 'medium',
 				'simplified' => 'The call hints are clues, not proof of a single cause.',
 				're_explained' => 'The diagnostic hints point to notable SIP or RTP observations in the displayed calls. Their confidence labels matter because the capture may be partial, asymmetric, or missing media/signalling paths.',
@@ -2435,7 +2435,7 @@ class PcapAnalysis extends AbstractTool {
 		if (!empty($summary['rtp']['status'])) {
 			$rtp = ', RTP ' . $summary['rtp']['status'] . ' confidence ' . ($summary['rtp']['confidence'] ?? 'unknown');
 		}
-		return "Displayed call {$label}: outcome {$outcome}, {$messageCount} message(s), duration {$duration}ms{$finalText}{$rtp}.";
+		return "Displayed call {$label}: outcome {$outcome}, {$messageCount} " . $this->pluralWord($messageCount, 'message') . ", duration {$duration}ms{$finalText}{$rtp}.";
 	}
 
 	private function shortCallLabel($callId) {
@@ -2800,7 +2800,7 @@ class PcapAnalysis extends AbstractTool {
 		if (empty($out)) {
 			foreach (array_slice($messages, 0, 4) as $msg) $out[] = $this->formatMessageEvidence($msg);
 		}
-		if ($this->hasReassembledMessages([$call])) $out[] = 'TCP reassembled SIP message(s) present in this ladder.';
+		if ($this->hasReassembledMessages([$call])) $out[] = 'TCP reassembled SIP messages present in this ladder.';
 		return $out;
 	}
 
@@ -2972,9 +2972,9 @@ class PcapAnalysis extends AbstractTool {
 		$hasReassembled = $this->hasReassembledMessages($calls);
 		$lines = [];
 		$inviteCount = (int)($inviteStats['total'] ?? 0);
-		$lines[] = "This capture contains {$sipCount} SIP message(s) grouped into {$transactionCount} SIP transaction(s), including {$inviteCount} INVITE call flow(s).";
+		$lines[] = "This capture contains {$sipCount} SIP " . $this->pluralWord($sipCount, 'message') . " grouped into {$transactionCount} SIP " . $this->pluralWord($transactionCount, 'transaction') . ", including {$inviteCount} INVITE " . $this->pluralWord($inviteCount, 'call flow') . ".";
 		if ($unparsed > 0) {
-			$lines[] = "{$unparsed} SIP-like message(s) could not be parsed cleanly, so message and SIP transaction totals may be incomplete.";
+			$lines[] = "{$unparsed} SIP-like " . $this->pluralWord($unparsed, 'message') . " could not be parsed cleanly, so message and SIP transaction totals may be incomplete.";
 		}
 		if ($hasReassembled) {
 			$lines[] = "Some SIP messages were recovered from simple TCP stream reassembly; conclusions based on those ladders should be treated with lower confidence.";
@@ -2991,20 +2991,21 @@ class PcapAnalysis extends AbstractTool {
 		if ($inviteStats['total'] > 0 && ($failed || $busy || $cancelled || $incomplete)) {
 			if ($cancelled && !$failed && !$busy && !$incomplete) {
 				$verb = $cancelled === 1 ? 'was' : 'were';
-				$lines[] = "Attention: {$cancelled} INVITE call flow(s) {$verb} cancelled before answer.";
+				$lines[] = "Attention: {$cancelled} INVITE " . $this->pluralWord($cancelled, 'call flow') . " {$verb} cancelled before answer.";
 			} else {
 				$issues = [];
 				if ($failed) $issues[] = "{$failed} failed";
 				if ($busy) $issues[] = "{$busy} busy";
 				if ($cancelled) $issues[] = "{$cancelled} cancelled";
 				if ($incomplete) $issues[] = "{$incomplete} incomplete";
-				$lines[] = "Attention: " . implode(', ', $issues) . " INVITE call flow(s) need review.";
+				$issueCount = $failed + $busy + $cancelled + $incomplete;
+				$lines[] = "Attention: " . implode(', ', $issues) . " INVITE " . $this->pluralWord($issueCount, 'call flow') . ($issueCount === 1 ? " needs" : " need") . " review.";
 			}
 		} elseif ($inviteStats['total'] > 0 && $answered) {
-			$lines[] = "Main result: {$answered} INVITE call flow(s) reached 200 OK, so the captured INVITE call flow(s) look successful at SIP signalling level.";
+			$lines[] = "Main result: {$answered} INVITE " . $this->pluralWord($answered, 'call flow') . " reached 200 OK, so the captured INVITE " . $this->pluralWord($answered, 'call flow') . ($answered === 1 ? " looks" : " look") . " successful at SIP signalling level.";
 		} elseif ($completed) {
 			$ok = [];
-			if ($completed) $ok[] = "{$completed} completed non-INVITE transaction(s)";
+			if ($completed) $ok[] = "{$completed} completed non-INVITE " . $this->pluralWord($completed, 'transaction');
 			$lines[] = "Main result: " . implode(', ', $ok) . " reached successful SIP responses.";
 		} elseif ($authOnly) {
 			$lines[] = "Main result: authentication challenges were seen; these are often normal for SIP digest auth unless the flow stops there.";
@@ -3013,7 +3014,7 @@ class PcapAnalysis extends AbstractTool {
 		}
 
 		if ($nonInviteFailures > 0 && $inviteStats['total'] > 0 && !$failed && !$busy && !$cancelled && !$incomplete) {
-			$lines[] = "{$nonInviteFailures} non-INVITE SIP transaction(s), such as OPTIONS/qualify checks, returned failure responses; that does not necessarily mean the captured INVITE call flow(s) failed.";
+			$lines[] = "{$nonInviteFailures} non-INVITE SIP " . $this->pluralWord($nonInviteFailures, 'transaction') . ", such as OPTIONS/qualify checks, returned failure responses; that does not necessarily mean the captured INVITE " . $this->pluralWord((int)$inviteStats['total'], 'call flow') . " failed.";
 		}
 
 		$notables = [];

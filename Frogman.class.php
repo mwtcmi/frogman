@@ -425,6 +425,10 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 		return rtrim(rtrim(number_format($seconds, 1, '.', ''), '0'), '.') . 's';
 	}
 
+	private function pcapPluralWord($count, $singular, $plural = null) {
+		return ((int)$count === 1) ? $singular : ($plural ?? $singular . 's');
+	}
+
 	private function pcapCommandValue($value) {
 		$value = preg_replace('/[\x00-\x1F\x7F]/', '', (string)$value);
 		return str_replace(['|', '}}', '{{'], ['/', '} }', '{ {'], $value);
@@ -1881,10 +1885,11 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 				$pcapActionPath = $data['path'] ?? '';
 				$pcapActionCallId = (!empty($data['calls']) && count($data['calls']) === 1 && !empty($data['calls'][0]['call_id'])) ? $data['calls'][0]['call_id'] : null;
 				$unparsed = (int)($data['unparsed_sip_message_count'] ?? 0);
-				$unparsedText = $unparsed > 0 ? ", {$unparsed} SIP-like message(s) unparsed" : "";
+				$unparsedText = $unparsed > 0 ? ", {$unparsed} SIP-like " . $this->pcapPluralWord($unparsed, 'message') . " unparsed" : "";
 				$sipTransactionCount = (int)($data['analysis']['sip_transaction_count'] ?? $data['call_count'] ?? 0);
 				$inviteCallFlowCount = (int)($data['analysis']['invite_call_flow_count'] ?? ($data['analysis']['evidence_highlights']['invite_call_flow_count'] ?? 0));
-				$lines = ["**PCAP SIP ladders** — {$data['sip_message_count']} SIP messages across {$sipTransactionCount} SIP transaction(s), including {$inviteCallFlowCount} INVITE call flow(s){$unparsedText}"];
+				$sipMessageCount = (int)($data['sip_message_count'] ?? 0);
+				$lines = ["**PCAP SIP ladders** — {$sipMessageCount} SIP " . $this->pcapPluralWord($sipMessageCount, 'message') . " across {$sipTransactionCount} SIP " . $this->pcapPluralWord($sipTransactionCount, 'transaction') . ", including {$inviteCallFlowCount} INVITE " . $this->pcapPluralWord($inviteCallFlowCount, 'call flow') . "{$unparsedText}"];
 				if (!empty($data['analysis']['outcome_counts'])) {
 					$parts = [];
 					foreach ($data['analysis']['outcome_counts'] as $outcome => $count) {
@@ -1990,7 +1995,7 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 					$count = (int)($call['message_count'] ?? 0);
 					$outcome = !empty($call['summary']['outcome']) ? ' — `' . $this->sanitizeForChat($call['summary']['outcome']) . '`' : '';
 					$lines[] = "";
-					$lines[] = "Call-ID `{$callId}`{$outcome} — {$count} message(s), {$duration}ms";
+					$lines[] = "Call-ID `{$callId}`{$outcome} — {$count} " . $this->pcapPluralWord($count, 'message') . ", {$duration}ms";
 					if (!empty($call['summary'])) {
 						$summaryParts = [];
 						if (!empty($call['summary']['from'])) {
@@ -2031,10 +2036,10 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 							$streamCount = count($rtp['streams'] ?? []);
 							$rtcp = !empty($rtp['rtcp_seen']) ? ', RTCP seen' : '';
 							$hasSeqNotes = !empty($rtp['sequence_notes']);
-							$lossSuffix = $hasSeqNotes ? '% on estimable stream(s)' : '%';
+							$lossSuffix = $hasSeqNotes ? '% on estimable streams' : '%';
 							$loss = isset($rtp['sequence_gap_estimate_percent']) && $rtp['sequence_gap_estimate_percent'] !== null ? ', seq gaps ~' . $this->sanitizeForChat((string)$rtp['sequence_gap_estimate_percent']) . $lossSuffix : '';
 							$seqNote = !empty($rtp['sequence_notes']) ? ', ' . implode(', ', array_map([$this, 'sanitizeForChat'], $rtp['sequence_notes'])) : '';
-							$lines[] = "  RTP: `{$status}`, confidence `{$confidence}`, {$streamCount} stream(s){$rtcp}{$loss}{$seqNote}";
+							$lines[] = "  RTP: `{$status}`, confidence `{$confidence}`, {$streamCount} " . $this->pcapPluralWord($streamCount, 'stream') . "{$rtcp}{$loss}{$seqNote}";
 						}
 						if (!empty($call['summary']['diagnostic_hints'])) {
 							foreach (array_slice($call['summary']['diagnostic_hints'], 0, 3) as $hint) {
@@ -2087,12 +2092,14 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 						}
 					}
 					if ($count > 20) {
-						$lines[] = "  ... and " . ($count - 20) . " more message(s) in this call";
+						$remainingMessages = $count - 20;
+						$lines[] = "  ... and {$remainingMessages} more " . $this->pcapPluralWord($remainingMessages, 'message') . " in this call";
 					}
 				}
 				if (($data['call_count'] ?? 0) > 5) {
 					$lines[] = "";
-					$lines[] = "... and " . ((int)$data['call_count'] - 5) . " more SIP transaction(s). Re-run with `call_id` to focus one ladder.";
+					$remainingTransactions = (int)$data['call_count'] - 5;
+					$lines[] = "... and {$remainingTransactions} more SIP " . $this->pcapPluralWord($remainingTransactions, 'transaction') . ". Re-run with `call_id` to focus one ladder.";
 				}
 				if (!empty($data['analysis']['reader_summary'])) {
 					$lines[] = "";
