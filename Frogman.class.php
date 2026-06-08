@@ -1932,7 +1932,7 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 					$lines[] = "Call picker";
 					$callRows = [];
 					$otherRows = [];
-					foreach (array_slice($data['analysis']['top_calls'], 0, 3) as $idx => $top) {
+					foreach ($data['analysis']['top_calls'] as $idx => $top) {
 						$topId = $this->sanitizeForChat($top['call_id'] ?? '');
 						$outcome = $this->sanitizeForChat($top['outcome'] ?? 'unknown');
 						$outcomeLabel = ucwords(str_replace('_', ' ', $outcome));
@@ -1995,6 +1995,10 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 							$lines[] = "   Call-ID: `{$row[1]}`";
 							if (!empty($row[2])) $lines[] = "   **{$row[2]}**";
 						}
+					}
+					if ($inviteCallFlowCount > count($callRows)) {
+						$lines[] = "";
+						$lines[] = "Showing " . count($callRows) . " of {$inviteCallFlowCount} call " . $this->pcapPluralWord($inviteCallFlowCount, 'candidate') . ". Re-run with call_id to focus one ladder.";
 					}
 				}
 				if (!empty($data['truncated'])) {
