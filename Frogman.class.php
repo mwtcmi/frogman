@@ -1876,7 +1876,7 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 						} else {
 							foreach (explode("\n", $text) as $textLine) {
 								$textLine = $this->sanitizeForChat($textLine);
-								if ($textLine !== '') $lines[] = $textLine;
+								$lines[] = $textLine;
 							}
 						}
 					}
