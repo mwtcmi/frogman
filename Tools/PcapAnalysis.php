@@ -2540,7 +2540,7 @@ class PcapAnalysis extends AbstractTool {
 			case 'rtp_absent_despite_answer':
 				return "the call was answered, but we didn't see the audio where we were listening, which often just means it took a different route.";
 			case 'large_signalling_gap':
-				return 'there was a long pause before the next event in the call.';
+				return 'there was a long pause before the next SIP event.';
 			case 'answered':
 				$answeredStatus = $facts['rtp_summary']['answered_status_counts'] ?? [];
 				if ((int)($answeredStatus['rtp_both_directions'] ?? 0) > 0) {

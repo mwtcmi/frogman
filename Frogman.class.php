@@ -1981,6 +1981,10 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 							$lines[] = "   Call-ID: `{$row[1]}`";
 							if (!empty($row[2])) $lines[] = "   **{$row[2]}**";
 						}
+					} else {
+						$lines[] = "";
+						$lines[] = "📞 Calls found";
+						$lines[] = "None. No INVITE call flows were decoded in this capture.";
 					}
 					if (!empty($otherRows)) {
 						$lines[] = "";
