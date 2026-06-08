@@ -22,6 +22,7 @@ class ListPcaps extends AbstractTool {
 
 	public function execute($params, $context) {
 		$captures = [];
+		$seen = [];
 		foreach ($this->captureBases() as $base) {
 			$baseReal = realpath($base);
 			if ($baseReal === false || !is_dir($baseReal) || !is_readable($baseReal)) continue;
@@ -32,6 +33,8 @@ class ListPcaps extends AbstractTool {
 				foreach ($files as $file) {
 					$real = realpath($file);
 					if ($real === false || !is_file($real) || !is_readable($real)) continue;
+					if (isset($seen[$real])) continue;
+					$seen[$real] = true;
 					$size = @filesize($real);
 					$mtime = @filemtime($real);
 					if ($size === false || $mtime === false) continue;
