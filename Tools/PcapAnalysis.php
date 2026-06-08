@@ -2522,8 +2522,8 @@ class PcapAnalysis extends AbstractTool {
 		if (!empty($invite['busy'])) return 'busy';
 		if (!empty($rtpStatus['rtp_one_direction_only'])) return 'rtp_one_direction_only';
 		if (!empty($rtpStatus['rtp_absent_despite_answer'])) return 'rtp_absent_despite_answer';
-		if (!empty($obs['large_signalling_gap'])) return 'large_signalling_gap';
 		if (!empty($invite['answered'])) return 'answered';
+		if (!empty($obs['large_signalling_gap'])) return 'large_signalling_gap';
 		return '';
 	}
 
