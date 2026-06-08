@@ -2542,6 +2542,16 @@ class PcapAnalysis extends AbstractTool {
 			case 'large_signalling_gap':
 				return 'there was a long pause before the next event in the call.';
 			case 'answered':
+				$answeredStatus = $facts['rtp_summary']['answered_status_counts'] ?? [];
+				if ((int)($answeredStatus['rtp_both_directions'] ?? 0) > 0) {
+					return 'at least one call was answered, and we saw audio going both ways at this capture point.';
+				}
+				if ((int)($answeredStatus['rtp_one_direction_only'] ?? 0) > 0) {
+					return 'at least one call was answered, but we only saw audio going one way at this capture point.';
+				}
+				if ((int)($answeredStatus['rtp_absent_despite_answer'] ?? 0) > 0) {
+					return "at least one call was answered, but we didn't see the audio at this capture point, which often just means it took a different route.";
+				}
 				return 'at least one call was answered.';
 		}
 		if ((int)($facts['invite_call_flow_count'] ?? 0) === 0) {
