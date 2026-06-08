@@ -75,7 +75,7 @@ class PcapAnalysis extends AbstractTool {
 
 		$calls = $this->groupByCallId($decoded['messages'], $maxCalls);
 		$this->attachRtpAnalysis($calls, $decoded);
-		$summary = $this->summariseCapture($calls, $decoded);
+		$summary = $this->summariseCapture($calls, $decoded, $filterCallId !== null);
 
 		if (isset($params['summary_action'])) {
 			$params['summary_action'] = $this->normalizeSummaryAction($params['summary_action']);
@@ -1364,7 +1364,7 @@ class PcapAnalysis extends AbstractTool {
 		return 'No negotiated RTP media was identified from SDP.';
 	}
 
-	private function summariseCapture($calls, $decoded) {
+	private function summariseCapture($calls, $decoded, $focusedCallView = false) {
 		$statuses = [];
 		$observations = [];
 		$transports = [];
@@ -1438,7 +1438,7 @@ class PcapAnalysis extends AbstractTool {
 			'invite_call_flow_count' => (int)($inviteOutcomes['total'] ?? 0),
 			'sip_transaction_count' => count($calls),
 			'top_calls' => array_slice($topCalls, 0, 10),
-			'reader_summary' => $this->deriveReaderSummary($calls, $decoded, $outcomes, $observations),
+			'reader_summary' => $this->deriveReaderSummary($calls, $decoded, $outcomes, $observations, $focusedCallView),
 			'support_summary' => $this->deriveSupportSummary($calls, $decoded, $outcomes, $observations, $inviteOutcomes, $rtpSummary, $relatedCallLegs),
 			'likely_next_checks' => $this->deriveLikelyNextChecks($calls, $observations, $rtpSummary),
 			'confidence_notes' => $this->deriveConfidenceNotes($calls, $decoded, $observations, $rtpSummary),
@@ -3375,7 +3375,7 @@ class PcapAnalysis extends AbstractTool {
 		return 'high';
 	}
 
-	private function deriveReaderSummary($calls, $decoded, $outcomes, $observations) {
+	private function deriveReaderSummary($calls, $decoded, $outcomes, $observations, $focusedCallView = false) {
 		$transactionCount = count($calls);
 		$sipCount = count($decoded['messages'] ?? []);
 		$unparsed = (int)($decoded['unparsed_sip_message_count'] ?? 0);
@@ -3384,7 +3384,8 @@ class PcapAnalysis extends AbstractTool {
 		$hasReassembled = $this->hasReassembledMessages($calls);
 		$lines = [];
 		$inviteCount = (int)($inviteStats['total'] ?? 0);
-		$lines[] = "This capture contains {$sipCount} SIP " . $this->pluralWord($sipCount, 'message') . " grouped into {$transactionCount} SIP " . $this->pluralWord($transactionCount, 'transaction') . ", including {$inviteCount} INVITE " . $this->pluralWord($inviteCount, 'call flow') . ".";
+		$scope = $focusedCallView ? 'focused analysis' : 'capture';
+		$lines[] = "This {$scope} contains {$sipCount} SIP " . $this->pluralWord($sipCount, 'message') . " grouped into {$transactionCount} SIP " . $this->pluralWord($transactionCount, 'transaction') . ", including {$inviteCount} INVITE " . $this->pluralWord($inviteCount, 'call flow') . ".";
 		if ($unparsed > 0) {
 			$lines[] = "{$unparsed} SIP-like " . $this->pluralWord($unparsed, 'message') . " could not be parsed cleanly, so message and SIP transaction totals may be incomplete.";
 		}
