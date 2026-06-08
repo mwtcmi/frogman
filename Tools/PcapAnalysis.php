@@ -2528,6 +2528,9 @@ class PcapAnalysis extends AbstractTool {
 	}
 
 	private function responsePlainMeaning(array $facts): string {
+		if ((int)($facts['invite_call_flow_count'] ?? 0) === 0) {
+			return 'this recording only shows SIP keepalives or other non-call traffic, not a captured phone call.';
+		}
 		switch ($this->responseSalientFindingKey($facts)) {
 			case 'failed':
 				return 'the call attempt was rejected before it was answered.';
@@ -2553,9 +2556,6 @@ class PcapAnalysis extends AbstractTool {
 					return "at least one call was answered, but we didn't see the audio at this capture point, which often just means it took a different route.";
 				}
 				return 'at least one call was answered.';
-		}
-		if ((int)($facts['invite_call_flow_count'] ?? 0) === 0) {
-			return 'this recording only shows background traffic, not a complete call setup.';
 		}
 		return '';
 	}
