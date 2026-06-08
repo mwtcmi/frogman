@@ -435,6 +435,15 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 		return ((int)$count === 1) ? $singular : ($plural ?? $singular . 's');
 	}
 
+	private function pcapWarningText($warning, $focusedCallView = false) {
+		$warning = (string)$warning;
+		if ($focusedCallView && preg_match('/^TCP reassembly exceeded global (\d+) MiB safety cap; additional TCP payloads skipped$/', $warning, $m)) {
+			return 'Capture warning: `TCP reassembly elsewhere in this capture exceeded the global ' . (int)$m[1] . ' MiB safety cap; additional TCP payloads were skipped.`';
+		}
+		$label = $focusedCallView ? 'Capture warning' : 'Warning';
+		return $label . ': `' . $this->sanitizeForChat($warning) . '`';
+	}
+
 	private function pcapCommandValue($value) {
 		$value = preg_replace('/[\x00-\x1F\x7F]/', '', (string)$value);
 		return str_replace(['|', '}}', '{{'], ['/', '} }', '{ {'], $value);
@@ -2007,7 +2016,7 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 				}
 				if (!empty($data['warnings'])) {
 					foreach (array_slice($data['warnings'], 0, 3) as $warning) {
-						$lines[] = "  Warning: `" . $this->sanitizeForChat($warning) . "`";
+						$lines[] = "  " . $this->pcapWarningText($warning, !empty($data['call_id']));
 					}
 				}
 				$displayedCalls = array_slice($data['calls'] ?? [], 0, 5);

@@ -2425,6 +2425,15 @@ class PcapAnalysis extends AbstractTool {
 		$sip = (int)($facts['sip_message_count'] ?? 0);
 		$transactions = (int)($facts['sip_transaction_count'] ?? $facts['call_count'] ?? 0);
 		$inviteFlows = (int)($facts['invite_call_flow_count'] ?? ($facts['invite_outcomes']['total'] ?? 0));
+		if (!empty($facts['focused_call_view'])) {
+			if ($sip > 0 && $transactions > 0) {
+				return 'This focused analysis contains ' . $sip . ' decoded SIP ' . $this->pluralWord($sip, 'message') . ' grouped into ' . $transactions . ' SIP ' . $this->pluralWord($transactions, 'transaction') . ', including ' . $inviteFlows . ' INVITE ' . $this->pluralWord($inviteFlows, 'call flow') . '.';
+			}
+			if ($sip > 0) {
+				return 'This focused analysis contains ' . $sip . ' decoded SIP ' . $this->pluralWord($sip, 'message') . ', but no grouped SIP transaction count is exposed in the response fields.';
+			}
+			return 'This response summarizes the focused PCAP analysis available from the capture.';
+		}
 		if ($sip > 0 && $transactions > 0) {
 			return 'This capture contains ' . $sip . ' decoded SIP ' . $this->pluralWord($sip, 'message') . ' grouped into ' . $transactions . ' SIP ' . $this->pluralWord($transactions, 'transaction') . ', including ' . $inviteFlows . ' INVITE ' . $this->pluralWord($inviteFlows, 'call flow') . '.';
 		}
@@ -2437,6 +2446,12 @@ class PcapAnalysis extends AbstractTool {
 	private function responseDisplayedScopeSentence($facts) {
 		$total = (int)($facts['call_count'] ?? 0);
 		$shown = min(5, $total);
+		if (!empty($facts['focused_call_view'])) {
+			if ($total > 0) {
+				return 'This focused view shows the decoded SIP ' . $this->pluralWord($total, 'transaction') . ' for the selected Call-ID, while counts and observations remain limited to what this capture point saw.';
+			}
+			return 'No detailed SIP ladder is available for the selected Call-ID, so the interpretation rests on aggregate decoded fields only.';
+		}
 		if ($total > $shown) {
 			return 'This response shows ' . $shown . ' of the ' . $total . ' decoded SIP ' . $this->pluralWord($total, 'transaction') . ' in detail, while the counts and observations are calculated across the entire capture.';
 		}
