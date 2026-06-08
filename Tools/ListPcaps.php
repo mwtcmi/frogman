@@ -41,20 +41,23 @@ class ListPcaps extends AbstractTool {
 					$size = @filesize($real);
 					$mtime = @filemtime($real);
 					if ($size === false || $mtime === false) continue;
+					$name = basename($real);
+					$sortTime = $this->captureSortTimestamp($name, (int)$mtime);
 					$captures[] = [
 						'path' => $real,
-						'name' => basename($real),
+						'name' => $name,
 						'size_bytes' => (int)$size,
 						'mtime' => (int)$mtime,
-						'when' => date('Y-m-d H:i:s', (int)$mtime),
+						'_sort_time' => $sortTime,
+						'when' => date('Y-m-d H:i:s', $sortTime),
 					];
 				}
 			}
 		}
 
 		usort($captures, function($a, $b) {
-			if ($a['mtime'] === $b['mtime']) return strcmp($a['name'], $b['name']);
-			return ($a['mtime'] > $b['mtime']) ? -1 : 1;
+			if ($a['_sort_time'] === $b['_sort_time']) return strcmp($a['name'], $b['name']);
+			return ($a['_sort_time'] > $b['_sort_time']) ? -1 : 1;
 		});
 
 		$count = count($captures);
@@ -62,6 +65,10 @@ class ListPcaps extends AbstractTool {
 		$limit = isset($params['limit']) ? (int)$params['limit'] : 25;
 		$shown = $showAll ? $count : min($limit, $count);
 		$captures = $showAll ? $captures : array_slice($captures, 0, $shown);
+		foreach ($captures as &$capture) {
+			unset($capture['_sort_time']);
+		}
+		unset($capture);
 
 		return [
 			'status' => 'ok',
@@ -76,5 +83,13 @@ class ListPcaps extends AbstractTool {
 			'/var/spool/asterisk/frogman/captures',
 			'/var/spool/asterisk/packetcapture',
 		];
+	}
+
+	private function captureSortTimestamp($name, $mtime) {
+		if (preg_match('/^sysadmin_(\d{4})_(\d{2})_(\d{2})_(\d{2})_(\d{2})_(\d{2})/', (string)$name, $m)) {
+			$ts = mktime((int)$m[4], (int)$m[5], (int)$m[6], (int)$m[2], (int)$m[3], (int)$m[1]);
+			if ($ts !== false) return (int)$ts;
+		}
+		return (int)$mtime;
 	}
 }
