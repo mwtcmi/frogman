@@ -3,7 +3,7 @@ namespace FreePBX\modules\Frogman\Tools;
 require_once __DIR__ . '/AbstractTool.php';
 
 class PcapAnalysis extends AbstractTool {
-	const MAX_FILE_BYTES = 262144000; // 250 MiB, based on parser memory use under default PHP memory budgets
+	const MAX_FILE_BYTES = 209715200; // 200 MiB, based on parser memory use under default PHP memory budgets
 	const MAX_PACKET_BYTES = 262144;
 	const MAX_TCP_STREAM_BYTES = 1048576; // 1 MiB per directional stream
 	const MAX_TCP_REASSEMBLY_BYTES = 8388608; // 8 MiB total TCP payload retained
@@ -140,7 +140,7 @@ class PcapAnalysis extends AbstractTool {
 			return null;
 		}
 		if ($size > self::MAX_FILE_BYTES) {
-			$err = 'Capture file exceeds the 250 MiB safety limit';
+			$err = 'Capture file exceeds the 200 MiB safety limit';
 			return null;
 		}
 
