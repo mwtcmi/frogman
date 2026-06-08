@@ -12,6 +12,9 @@ class ListPcaps extends AbstractTool {
 			return 'Parameter "all" must be a boolean when supplied';
 		}
 		if (isset($params['limit'])) {
+			if (is_array($params['limit']) || !preg_match('/^\d+$/', (string)$params['limit'])) {
+				return 'Parameter "limit" must be an integer between 1 and 200';
+			}
 			$limit = (int)$params['limit'];
 			if ($limit < 1 || $limit > 200) {
 				return 'Parameter "limit" must be between 1 and 200';
