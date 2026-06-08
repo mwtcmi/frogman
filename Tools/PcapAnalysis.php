@@ -276,6 +276,12 @@ class PcapAnalysis extends AbstractTool {
 			if (!empty($parsed['sip_like'])) {
 				foreach ($parsed['messages'] as $msg) {
 					if ($filterCallId !== null && strcasecmp($msg['call_id'] ?? '', $filterCallId) !== 0) continue;
+					if (count($messages) >= $maxMessages) {
+						$truncated = true;
+						$capWarning = "SIP message output capped at {$maxMessages}";
+						if (!in_array($capWarning, $warnings, true)) $warnings[] = $capWarning;
+						break;
+					}
 					$msg['time'] = date('c', $tsSec);
 					$msg['t_epoch'] = $tEpoch;
 					$msg['src'] = $decoded['src'];
@@ -287,7 +293,8 @@ class PcapAnalysis extends AbstractTool {
 
 			if (count($messages) >= $maxMessages) {
 				$truncated = true;
-				$warnings[] = "SIP message output capped at {$maxMessages}";
+				$capWarning = "SIP message output capped at {$maxMessages}";
+				if (!in_array($capWarning, $warnings, true)) $warnings[] = $capWarning;
 				break;
 			}
 		}
@@ -296,12 +303,13 @@ class PcapAnalysis extends AbstractTool {
 			$tcpParsed = $this->parseTcpStreams($tcpStreams, $filterCallId, $warnings);
 			$unparsedSipMessages += $tcpParsed['unparsed'];
 			foreach ($tcpParsed['messages'] as $msg) {
-				$messages[] = $msg;
 				if (count($messages) >= $maxMessages) {
 					$truncated = true;
-					$warnings[] = "SIP message output capped at {$maxMessages}";
+					$capWarning = "SIP message output capped at {$maxMessages}";
+					if (!in_array($capWarning, $warnings, true)) $warnings[] = $capWarning;
 					break;
 				}
+				$messages[] = $msg;
 			}
 			usort($messages, function($a, $b) {
 				if ($a['t_epoch'] == $b['t_epoch']) return 0;

@@ -331,6 +331,7 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 		$hasEvidence = !empty($item['evidence_text']) && is_array($item['evidence_text']);
 		if (!$hasSimplified && !$hasReExplained && !$hasEvidence) return;
 		if (!preg_match('/^[a-z0-9_]+$/i', $section) || !preg_match('/^[a-z0-9_:-]+$/i', $id)) return;
+		if (!$this->pcapCanRenderCommandValue($path)) return;
 		$target = "{$section} {$id}";
 		if ($callRef !== null && preg_match('/^[a-f0-9]{12}$/i', (string)$callRef)) $target .= " call " . $callRef;
 		$target .= " path " . $this->pcapCommandValue($path);
@@ -348,6 +349,7 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 	private function appendPcapSummaryBlockActions(&$lines, $section = null, $callRef = null, $path = null, $callId = null, $indent = '  ') {
 		if (!is_string($section) || $section === '' || !preg_match('/^[a-z0-9_]+$/i', $section)) return;
 		if (!is_string($path) || $path === '') return;
+		if (!$this->pcapCanRenderCommandValue($path)) return;
 		$target = "{$section} block";
 		if ($callRef !== null && preg_match('/^[a-f0-9]{12}$/i', (string)$callRef)) $target .= " call " . $callRef;
 		$target .= " path " . $this->pcapCommandValue($path);
@@ -370,6 +372,7 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 		if (!is_string($section) || !preg_match('/^[a-z0-9_]+$/i', $section)) return;
 		if (!is_string($id) || !preg_match('/^[a-z0-9_:-]+$/i', $id)) return;
 		if (!is_string($path) || $path === '') return;
+		if (!$this->pcapCanRenderCommandValue($path)) return;
 
 		$target = "{$section} {$id}";
 		if (!empty($data['call_ref']) && preg_match('/^[a-f0-9]{12}$/i', (string)$data['call_ref'])) {
@@ -447,6 +450,11 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 	private function pcapCommandValue($value) {
 		$value = preg_replace('/[\x00-\x1F\x7F]/', '', (string)$value);
 		return str_replace(['|', '}}', '{{'], ['/', '} }', '{ {'], $value);
+	}
+
+	private function pcapCanRenderCommandValue($value) {
+		$value = (string)$value;
+		return !preg_match('/[\x00-\x1F\x7F]|\||\{\{|\}\}/', $value);
 	}
 
 	/**
@@ -1842,11 +1850,17 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 					? $data['captures']
 					: array_slice($data['captures'], 0, 3);
 				foreach ($show as $c) {
-					$path = $this->sanitizeForChat($c['path']);
+					$rawPath = (string)($c['path'] ?? '');
+					$path = $this->sanitizeForChat($rawPath);
 					$name = $this->sanitizeForChat($c['name']);
 					$meta = $this->sanitizeForChat($c['when'] . ' · ' . round($c['size_bytes'] / 1024) . ' KB');
 					$lines[] = "";
-					$lines[] = "📄 {{cmd:analyze pcap {$path}|{$name}}}";
+					if ($this->pcapCanRenderCommandValue($rawPath)) {
+						$lines[] = "📄 {{cmd:analyze pcap {$this->pcapCommandValue($rawPath)}|{$name}}}";
+					} else {
+						$lines[] = "📄 `{$name}`";
+						$lines[] = "   Path: `{$path}`";
+					}
 					$lines[] = "   {$meta}";
 				}
 				$remaining = (int)$data['count'] - count($show);
@@ -1966,8 +1980,8 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 						}
 						$label = trim($outcomeLabel . ' ' . $typeLabel) . " — {$duration}, {$msgCount} {$messageLabel}{$final}";
 						$rawTopId = $top['call_id'] ?? '';
-						if (!empty($data['path']) && is_string($rawTopId) && $rawTopId !== '') {
-							$focusPath = $this->sanitizeForChat($data['path']);
+						if (!empty($data['path']) && $this->pcapCanRenderCommandValue($data['path']) && is_string($rawTopId) && $rawTopId !== '') {
+							$focusPath = $this->pcapCommandValue($data['path']);
 							$focusCallId = $this->pcapCommandValue($rawTopId);
 							$primary = "{{cmd:analyze pcap {$focusPath} call_id {$focusCallId}|{$label}}}";
 						} else {
