@@ -2368,7 +2368,10 @@ class PcapAnalysis extends AbstractTool {
 		$caveat = $this->responseCaveatSentence($facts);
 		$sentences = array_slice(array_filter($body), 0, 3);
 		if ($caveat !== '') $sentences[] = $caveat;
-		return implode(' ', $sentences);
+		$text = implode(' ', $sentences);
+		$meaning = $this->responsePlainMeaning($facts);
+		if ($meaning !== '') return $text . "\n\nThis means: " . $meaning;
+		return $text;
 	}
 
 	private function responseExplainNarrative($analysis) {
@@ -2478,36 +2481,71 @@ class PcapAnalysis extends AbstractTool {
 		$invite = $facts['invite_outcomes'] ?? [];
 		$obs = $facts['observation_counts'] ?? [];
 		$rtpStatus = $facts['rtp_summary']['status_counts'] ?? [];
-		if (!empty($invite['failed'])) {
-			$status = $this->dominantFailureStatusText($facts['final_status_counts'] ?? []);
-			$statusText = $status !== '' ? '; the most common >=400 final status is ' . $status : '';
-			return (int)$invite['failed'] . ' INVITE ' . $this->pluralWord((int)$invite['failed'], 'call flow') . ' ended in failure response evidence' . $statusText . ', so the final SIP status counts are the strongest signalling clue.';
+		switch ($this->responseSalientFindingKey($facts)) {
+			case 'failed':
+				$status = $this->dominantFailureStatusText($facts['final_status_counts'] ?? []);
+				$statusText = $status !== '' ? '; the most common >=400 final status is ' . $status : '';
+				return (int)$invite['failed'] . ' INVITE ' . $this->pluralWord((int)$invite['failed'], 'call flow') . ' ended in failure response evidence' . $statusText . ', so the final SIP status counts are the strongest signalling clue.';
+			case 'cancelled':
+				$count = (int)$invite['cancelled'];
+				$total = (int)($invite['total'] ?? 0);
+				$cancelledText = $this->responseInviteOutcomePhrase($count, $total, 'cancelled before answer');
+				if (!empty($rtpStatus['rtp_not_seen_before_cancellation'])) {
+					$rtpCount = (int)$rtpStatus['rtp_not_seen_before_cancellation'];
+					return $cancelledText . ', and ' . $rtpCount . ' cancelled ' . $this->pluralWord($rtpCount, 'flow') . ' had negotiated media without matching RTP at this capture point before cancellation.';
+				}
+				return $cancelledText . '.';
+			case 'busy':
+				return $this->responseOutcomeSentence($facts);
+			case 'rtp_one_direction_only':
+				$count = (int)$rtpStatus['rtp_one_direction_only'];
+				return 'RTP was visible in only one captured direction for ' . $count . ' ' . $this->pluralWord($count, 'flow') . ', which makes capture-point media visibility a central finding.';
+			case 'rtp_absent_despite_answer':
+				$count = (int)$rtpStatus['rtp_absent_despite_answer'];
+				return $count . ' answered ' . $this->pluralWord($count, 'flow') . ' had negotiated media but no matching RTP at this capture point.';
+			case 'large_signalling_gap':
+				$count = (int)$obs['large_signalling_gap'];
+				return $count . ' ' . $this->pluralWord($count, 'flow') . ' had a multi-second signalling gap flagged by the aggregate observations.';
+			case 'answered':
+				$count = (int)$invite['answered'];
+				return $count . ' INVITE ' . $this->pluralWord($count, 'call flow') . ' reached a 2xx final response at SIP signalling level.';
 		}
-		if (!empty($invite['cancelled'])) {
-			$count = (int)$invite['cancelled'];
-			$total = (int)($invite['total'] ?? 0);
-			$cancelledText = $this->responseInviteOutcomePhrase($count, $total, 'cancelled before answer');
-			if (!empty($rtpStatus['rtp_not_seen_before_cancellation'])) {
-				$rtpCount = (int)$rtpStatus['rtp_not_seen_before_cancellation'];
-				return $cancelledText . ', and ' . $rtpCount . ' cancelled ' . $this->pluralWord($rtpCount, 'flow') . ' had negotiated media without matching RTP at this capture point before cancellation.';
-			}
-			return $cancelledText . '.';
+		return '';
+	}
+
+	private function responseSalientFindingKey(array $facts): string {
+		$invite = $facts['invite_outcomes'] ?? [];
+		$obs = $facts['observation_counts'] ?? [];
+		$rtpStatus = $facts['rtp_summary']['status_counts'] ?? [];
+		if (!empty($invite['failed'])) return 'failed';
+		if (!empty($invite['cancelled'])) return 'cancelled';
+		if (!empty($invite['busy'])) return 'busy';
+		if (!empty($rtpStatus['rtp_one_direction_only'])) return 'rtp_one_direction_only';
+		if (!empty($rtpStatus['rtp_absent_despite_answer'])) return 'rtp_absent_despite_answer';
+		if (!empty($obs['large_signalling_gap'])) return 'large_signalling_gap';
+		if (!empty($invite['answered'])) return 'answered';
+		return '';
+	}
+
+	private function responsePlainMeaning(array $facts): string {
+		switch ($this->responseSalientFindingKey($facts)) {
+			case 'failed':
+				return 'the call attempt was rejected before it was answered.';
+			case 'cancelled':
+				return 'the call ended before it was answered.';
+			case 'busy':
+				return 'the other end was busy.';
+			case 'rtp_one_direction_only':
+				return "we only saw audio going one way where we were listening, which doesn't prove the caller heard silence.";
+			case 'rtp_absent_despite_answer':
+				return "the call was answered, but we didn't see the audio where we were listening, which often just means it took a different route.";
+			case 'large_signalling_gap':
+				return 'there was a long pause before the next event in the call.';
+			case 'answered':
+				return 'at least one call was answered.';
 		}
-		if (!empty($rtpStatus['rtp_one_direction_only'])) {
-			$count = (int)$rtpStatus['rtp_one_direction_only'];
-			return 'RTP was visible in only one captured direction for ' . $count . ' ' . $this->pluralWord($count, 'flow') . ', which makes capture-point media visibility a central finding.';
-		}
-		if (!empty($rtpStatus['rtp_absent_despite_answer'])) {
-			$count = (int)$rtpStatus['rtp_absent_despite_answer'];
-			return $count . ' answered ' . $this->pluralWord($count, 'flow') . ' had negotiated media but no matching RTP at this capture point.';
-		}
-		if (!empty($obs['large_signalling_gap'])) {
-			$count = (int)$obs['large_signalling_gap'];
-			return $count . ' ' . $this->pluralWord($count, 'flow') . ' had a multi-second signalling gap flagged by the aggregate observations.';
-		}
-		if (!empty($invite['answered'])) {
-			$count = (int)$invite['answered'];
-			return $count . ' INVITE ' . $this->pluralWord($count, 'call flow') . ' reached a 2xx final response at SIP signalling level.';
+		if ((int)($facts['invite_call_flow_count'] ?? 0) === 0) {
+			return 'this recording only shows background traffic, not a complete call setup.';
 		}
 		return '';
 	}
