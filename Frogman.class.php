@@ -1971,10 +1971,10 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 							$otherRows[] = [$primary, $topId, $friendly];
 						}
 					}
-					$num = 0;
 					if (!empty($callRows)) {
 						$lines[] = "";
 						$lines[] = "📞 Calls found";
+						$num = 0;
 						foreach ($callRows as $row) {
 							$num++;
 							$lines[] = "{$num}. {$row[0]}";
@@ -1989,6 +1989,7 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 					if (!empty($otherRows)) {
 						$lines[] = "";
 						$lines[] = "⚙️ Other SIP transactions";
+						$num = 0;
 						foreach ($otherRows as $row) {
 							$num++;
 							$lines[] = "{$num}. {$row[0]}";
