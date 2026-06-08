@@ -1540,6 +1540,25 @@ class ChatParser {
 			self::setPending($sessionId, 'fm_remove_inbound_route', $params);
 			return ['tool' => 'fm_remove_inbound_route', 'params' => $params];
 		}
+		// Re-point a DID's destination — the highest-value update path.
+		// Tool's resolveDestination handles plain ext / vm / rg / ivr / tc shorthand.
+		if (preg_match('/^point\s+(?:inbound\s+route|route|did)\s+(\S+)\s+(?:to|→)\s+(.+)$/i', $msg, $m)) {
+			$params = ['extension' => $m[1], 'destination' => trim($m[2])];
+			self::setPending($sessionId, 'fm_update_inbound_route', $params);
+			return ['tool' => 'fm_update_inbound_route', 'params' => $params];
+		}
+		// Rename = update description.
+		if (preg_match('/^rename\s+(?:inbound\s+route|route|did)\s+(\S+)\s+(?:to|as)\s+(.+)$/i', $msg, $m)) {
+			$params = ['extension' => $m[1], 'description' => trim($m[2])];
+			self::setPending($sessionId, 'fm_update_inbound_route', $params);
+			return ['tool' => 'fm_update_inbound_route', 'params' => $params];
+		}
+		// CID display prefix — `grppre` column. e.g. "Sales:" prepends to caller ID.
+		if (preg_match('/^set\s+(?:inbound\s+route|route|did)\s+(\S+)\s+cid\s+prefix\s+(?:to\s+)?(.+)$/i', $msg, $m)) {
+			$params = ['extension' => $m[1], 'grppre' => trim($m[2])];
+			self::setPending($sessionId, 'fm_update_inbound_route', $params);
+			return ['tool' => 'fm_update_inbound_route', 'params' => $params];
+		}
 
 		// ── Ring Group CRUD ──
 		if (preg_match('/^(add|create)\s+(ring\s*group|rg)\s+(\d+)\s+(?:with|members?|ext)\s+(.+?)(?:\s+strategy\s+(\w+))?$/i', $msg, $m)) {
@@ -2357,6 +2376,9 @@ class ChatParser {
   `add inbound route` — guided wizard (asks DID, destination, optional CID)
   `add inbound route <DID>` — wizard with DID pre-filled
   `remove inbound route <DID>`
+  `point did <DID> to <dest>` : re-route DID to a different destination
+  `rename did <DID> to <label>` : change route description
+  `set did <DID> cid prefix to <text>` : prefix prepended to caller-ID name
 
 **Ring Group Management:**
   `create ringgroup <grp> with <ext>,<ext>,<ext>`
