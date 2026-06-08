@@ -2005,7 +2005,7 @@ class PcapAnalysis extends AbstractTool {
 				'call_index' => isset($params['call_index']) ? (int)$params['call_index'] : null,
 				'call_ref' => $params['call_ref'] ?? null,
 				'focus_context' => $this->summaryActionFocusContext($params, $calls),
-				'result' => $this->summaryBlockActionResult($params['summary_action'], $params['section'], $items, $analysis, $calls),
+				'result' => $this->summaryBlockActionResult($params['summary_action'], $params['section'], $items, $analysis, $calls, $params),
 				'available_actions' => $this->summaryBlockActionAvailability($params['summary_action']),
 			];
 		}
@@ -2262,19 +2262,19 @@ class PcapAnalysis extends AbstractTool {
 		];
 	}
 
-	private function summaryBlockActionResult($action, $section, $items, $analysis = null, $calls = []) {
+	private function summaryBlockActionResult($action, $section, $items, $analysis = null, $calls = [], $params = []) {
 		if ($action === 'simplify') {
 			return [
 				'kind' => 'text',
 				'title' => 'Simplify',
-				'text' => $this->summaryBlockSimplifyText($section, $items, $analysis, $calls),
+				'text' => $this->summaryBlockSimplifyText($section, $items, $analysis, $calls, $params),
 			];
 		}
 		if ($action === 'explain') {
 			return [
 				'kind' => 'text',
 				'title' => 'Explain',
-				'text' => $this->summaryBlockExplainText($section, $items, $analysis, $calls),
+				'text' => $this->summaryBlockExplainText($section, $items, $analysis, $calls, $params),
 			];
 		}
 
@@ -2297,9 +2297,9 @@ class PcapAnalysis extends AbstractTool {
 		];
 	}
 
-	private function summaryBlockSimplifyText($section, $items, $analysis = null, $calls = []) {
+	private function summaryBlockSimplifyText($section, $items, $analysis = null, $calls = [], $params = []) {
 		if ($section === 'response' && is_array($analysis)) {
-			return $this->responseSimplifyNarrative($analysis);
+			return $this->responseSimplifyNarrative($analysis, !empty($params['call_id']));
 		}
 		$lines = [];
 		foreach ($items as $item) {
@@ -2310,9 +2310,9 @@ class PcapAnalysis extends AbstractTool {
 		return !empty($lines) ? implode("\n", $lines) : 'No simplified text is available for this block.';
 	}
 
-	private function summaryBlockExplainText($section, $items, $analysis = null, $calls = []) {
+	private function summaryBlockExplainText($section, $items, $analysis = null, $calls = [], $params = []) {
 		if ($section === 'response' && is_array($analysis)) {
-			return $this->responseExplainNarrative($analysis);
+			return $this->responseExplainNarrative($analysis, !empty($params['call_id']));
 		}
 		$intro = [
 			'response' => 'This explains the whole PCAP response that was displayed: aggregate counts, displayed SIP ladders, diagnostic hints, support summary, likely checks, and confidence limits. Omitted ladders are not treated as individually reviewed here.',
@@ -2352,8 +2352,8 @@ class PcapAnalysis extends AbstractTool {
 		return $actions;
 	}
 
-	private function responseSimplifyNarrative($analysis) {
-		$facts = $this->responseNarrativeFacts($analysis);
+	private function responseSimplifyNarrative($analysis, $focusedCallView = false) {
+		$facts = $this->responseNarrativeFacts($analysis, $focusedCallView);
 		$body = [];
 		$body[] = $this->responseTotalSentence($facts);
 		$unparsed = $this->responseUnparsedSentence($facts);
@@ -2374,8 +2374,8 @@ class PcapAnalysis extends AbstractTool {
 		return $text;
 	}
 
-	private function responseExplainNarrative($analysis) {
-		$facts = $this->responseNarrativeFacts($analysis);
+	private function responseExplainNarrative($analysis, $focusedCallView = false) {
+		$facts = $this->responseNarrativeFacts($analysis, $focusedCallView);
 		$body = [];
 		$body[] = $this->responseTotalSentence($facts);
 		$body[] = $this->responseDisplayedScopeSentence($facts);
@@ -2401,7 +2401,7 @@ class PcapAnalysis extends AbstractTool {
 		return implode(' ', $sentences);
 	}
 
-	private function responseNarrativeFacts($analysis) {
+	private function responseNarrativeFacts($analysis, $focusedCallView = false) {
 		$highlights = $analysis['evidence_highlights'] ?? [];
 		return [
 			'sip_message_count' => (int)($highlights['sip_message_count'] ?? 0),
@@ -2417,6 +2417,7 @@ class PcapAnalysis extends AbstractTool {
 			'support_ids' => $this->summaryItemIds($analysis['support_summary'] ?? []),
 			'next_check_ids' => $this->summaryItemIds($analysis['likely_next_checks'] ?? []),
 			'confidence_ids' => $this->summaryItemIds($analysis['confidence_notes'] ?? []),
+			'focused_call_view' => (bool)$focusedCallView,
 		];
 	}
 
@@ -2474,6 +2475,9 @@ class PcapAnalysis extends AbstractTool {
 	private function responseUnparsedSentence($facts) {
 		$unparsed = (int)($facts['unparsed_message_count'] ?? 0);
 		if ($unparsed <= 0) return '';
+		if (!empty($facts['focused_call_view'])) {
+			return 'Capture note: ' . $unparsed . ' SIP-like ' . $this->pluralWord($unparsed, 'payload') . ' elsewhere in this capture could not be parsed, so decoded totals may be incomplete.';
+		}
 		return $unparsed . ' SIP-like ' . $this->pluralWord($unparsed, 'payload') . ' could not be parsed into grouped SIP messages, so decoded totals may be incomplete.';
 	}
 
