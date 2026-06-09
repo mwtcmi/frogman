@@ -2,7 +2,7 @@
 
 ## Overview
 
-Frogman exposes 247 tools via HTTP API. Bots, web apps, and integrations can execute these tools remotely. Tools cannot be created or modified via the API, only executed based on your permission level.
+Frogman exposes 248 tools via HTTP API. Bots, web apps, and integrations can execute these tools remotely. Tools cannot be created or modified via the API, only executed based on your permission level.
 
 ## Authentication
 

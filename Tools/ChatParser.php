@@ -636,6 +636,28 @@ class ChatParser {
 			if (!empty($m[2])) $params['to'] = trim($m[2]);
 			return ['tool' => 'fm_did_destination_map', 'params' => $params];
 		}
+		// Whole-PBX route map — recursive dedup'd graph across every entrypoint.
+		// Forms: "route map" / "pbx route map" / "map pbx" (scope=all)
+		//        "route map summary" / "pbx topology" (mode=summary, no mermaid)
+		//        "route map did 5551234" / "route map ext 1001" / "route map ivr 8" /
+		//        "route map tc 3" / "route map rg 600" / "route map queue 700"
+		if (preg_match('/^(?:pbx\s+)?route\s+map(?:\s+(summary|did|ext|ivr|tc|rg|queue)(?:\s+(\S+))?)?$/i', $msg, $m)) {
+			$params = [];
+			if (!empty($m[1])) {
+				$kind = strtolower($m[1]);
+				if ($kind === 'summary') {
+					$params['mode'] = 'summary';
+				} elseif (!empty($m[2])) {
+					$params['scope'] = $kind . ':' . trim($m[2]);
+				}
+			}
+			return ['tool' => 'fm_pbx_route_map', 'params' => $params];
+		}
+		if (preg_match('/^(?:map\s+pbx(?:\s+routes?)?|pbx\s+topology)$/i', $msg)) {
+			$params = [];
+			if (stripos($msg, 'topology') !== false) $params['mode'] = 'summary';
+			return ['tool' => 'fm_pbx_route_map', 'params' => $params];
+		}
 		if (preg_match('/^failed\s+calls?$/i', $lower)) {
 			return ['tool' => 'fm_get_failed_calls', 'params' => []];
 		}
@@ -2257,6 +2279,13 @@ class ChatParser {
 
 **DID Map:**
   `did map` / `inbound map` / `where do my dids go` — Mermaid flowchart of every DID's first-hop destination
+
+**PBX Route Map:**
+  `route map` / `pbx route map` / `map pbx` — full PBX call-routing graph (every entrypoint, every branch, deduped)
+  `route map summary` / `pbx topology` — node/edge counts only, no Mermaid (for large PBXs)
+  `route map did <did>` — scoped to one DID
+  `route map ext <ext>` — scoped to one extension's outbound branches
+  `route map ivr <id>` / `route map tc <id>` / `route map rg <num>` / `route map queue <num>` — scoped to one object
 
 **Trunks:**
   `list trunks`

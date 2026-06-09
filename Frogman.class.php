@@ -861,7 +861,8 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 				}
 				$lines = ["**Ring Groups** ({$data['count']}):"];
 				foreach ($data['ringgroups'] as $g) {
-					$lines[] = "  {{cmd:show ringgroup {$g['grpnum']}|{$g['grpnum']}}} — {$g['description']}";
+					$map = " {{cmd:route map rg {$g['grpnum']}|🗺 map}}";
+					$lines[] = "  {{cmd:show ringgroup {$g['grpnum']}|{$g['grpnum']}}} — {$g['description']}{$map}";
 				}
 				return implode("\n", $lines);
 
@@ -1293,7 +1294,8 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 				if (empty($data['queues'])) return "No queues configured.";
 				$lines = ["**Queues** ({$data['count']}):"];
 				foreach ($data['queues'] as $q) {
-					$lines[] = "  {{cmd:show queue {$q['extension']}|{$q['extension']}}} — {$q['name']}";
+					$map = " {{cmd:route map queue {$q['extension']}|🗺 map}}";
+					$lines[] = "  {{cmd:show queue {$q['extension']}|{$q['extension']}}} — {$q['name']}{$map}";
 				}
 				return implode("\n", $lines);
 
@@ -1309,7 +1311,8 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 				foreach ($data['time_conditions'] as $tc) {
 					$state = is_array($tc['state']) ? 'normal' : ($tc['state'] ?: 'normal');
 					$icon = $state === 'override' ? '🔴' : '🟢';
-					$lines[] = "  {$icon} `{$tc['id']}` — **{$tc['name']}** ({$state})";
+					$map = " {{cmd:route map tc {$tc['id']}|🗺 map}}";
+					$lines[] = "  {$icon} `{$tc['id']}` — **{$tc['name']}** ({$state}){$map}";
 				}
 				return implode("\n", $lines);
 
@@ -1398,7 +1401,8 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 				$lines = ["**IVRs** ({$data['count']}):"];
 				foreach ($data['ivrs'] as $i) {
 					$desc = !empty($i['description']) ? "\n    {$i['description']}" : '';
-					$lines[] = "  {{cmd:show ivr {$i['id']}|{$i['id']} — {$i['name']}}}{$desc}";
+					$map = "  {{cmd:route map ivr {$i['id']}|🗺 map}}";
+					$lines[] = "  {{cmd:show ivr {$i['id']}|{$i['id']} — {$i['name']}}}{$map}{$desc}";
 				}
 				return implode("\n", $lines);
 
@@ -2490,6 +2494,53 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 				$lines[] = "```mermaid";
 				$lines[] = rtrim($data['mermaid']);
 				$lines[] = "```";
+				return implode("\n", $lines);
+
+			case 'fm_pbx_route_map':
+				if (!empty($data['error'])) {
+					return "🗺️ **PBX Route Map**\n\n  " . $this->sanitizeForChat($data['error']);
+				}
+				$scope = $data['scope'] ?? 'all';
+				$ep = (int)($data['entrypoint_count'] ?? 0);
+				$nc = (int)($data['node_count'] ?? 0);
+				$ec = (int)($data['edge_count'] ?? 0);
+				$mode = $data['mode'] ?? 'full';
+				$lines = ["🗺️ **PBX Route Map** (scope: `" . $this->sanitizeForChat($scope) . "`)"];
+				$lines[] = "  {$ep} entrypoint" . ($ep===1?'':'s') . ", {$nc} node" . ($nc===1?'':'s') . ", {$ec} edge" . ($ec===1?'':'s') . ", depth cap " . (int)($data['depth'] ?? 0);
+				if (!empty($data['summary'])) {
+					$labels = ['did'=>'DIDs','extension'=>'extensions','ringgroup'=>'ring groups','queue'=>'queues','ivr'=>'IVRs','voicemail'=>'voicemail','timecondition'=>'time conditions','announcement'=>'announcements','terminate'=>'terminations','followme'=>'follow-me','forward'=>'forwards','unknown'=>'unconfigured'];
+					$bits = [];
+					foreach ($data['summary'] as $type => $count) {
+						$bits[] = "{$count} " . ($labels[$type] ?? $type);
+					}
+					$lines[] = "  " . implode(', ', $bits);
+				}
+				if (!empty($data['warnings'])) {
+					$lines[] = "";
+					$lines[] = "⚠️ **Warnings:**";
+					foreach ($data['warnings'] as $w) {
+						$lines[] = "  - " . $this->sanitizeForChat($w);
+					}
+				}
+				if (!empty($data['unknown_destinations'])) {
+					$lines[] = "";
+					$lines[] = "🔍 **Unconfigured / unknown destinations** (" . count($data['unknown_destinations']) . "):";
+					foreach (array_slice($data['unknown_destinations'], 0, 10) as $u) {
+						$lines[] = "  - " . $this->sanitizeForChat($u['label'] ?? $u['raw'] ?? '?');
+					}
+					if (count($data['unknown_destinations']) > 10) {
+						$lines[] = "  ...and " . (count($data['unknown_destinations']) - 10) . " more";
+					}
+				}
+				if ($mode === 'summary') {
+					$lines[] = "";
+					$lines[] = "Summary mode (no diagram). Scope down to render: `route map did <did>`, `route map ivr <id>`, etc.";
+				} elseif (!empty($data['mermaid'])) {
+					$lines[] = "";
+					$lines[] = "```mermaid";
+					$lines[] = rtrim($data['mermaid']);
+					$lines[] = "```";
+				}
 				return implode("\n", $lines);
 
 			case 'fm_trace_call_flow':
