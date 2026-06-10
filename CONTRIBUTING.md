@@ -2,12 +2,12 @@
 
 Thanks for thinking about contributing. Frogman is open source (AGPLv3+) and built to be extended — the tool surface lives in `Tools/*.php` and is meant to grow.
 
-This doc covers what Frogman is allowed to do, what it isn't, and how to ship a change. If you just want the per-tool mechanics, [CLAUDE.md](./CLAUDE.md) in the repo root is the working contributor doc.
+This doc covers what Frogman is allowed to do, what it isn't, and how to ship a change. If you just want the per-tool mechanics, [DEVELOPMENT.md](./DEVELOPMENT.md) in the repo root is the working contributor doc.
 
 ## Read these first
 
 - [README.md](./README.md) — what Frogman is and how it installs.
-- [CLAUDE.md](./CLAUDE.md) — the hard rules and the mechanics of adding a tool. Despite the name, it's the working contributor doc.
+- [DEVELOPMENT.md](./DEVELOPMENT.md) — the hard rules and the mechanics of adding a tool.
 
 ## What Frogman is allowed to do
 
@@ -67,7 +67,7 @@ If you have an idea for a commercial-module integration, open an issue first. We
 
 ## Adding a new tool
 
-Mechanics live in [CLAUDE.md](./CLAUDE.md). The short version:
+Mechanics live in [DEVELOPMENT.md](./DEVELOPMENT.md). The short version:
 
 - Create `Tools/MyTool.php` extending `AbstractTool`.
 - Implement `name()`, `description()`, `validate()`, `requiredPermission()`, `execute()`.

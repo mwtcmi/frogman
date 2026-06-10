@@ -30,7 +30,7 @@ class AuditAdminPasswords extends AbstractTool {
 		$counts = ['critical' => 0, 'high' => 0];
 
 		// No list-all BMO for ampusers — ampuser.class.php constructs per-user
-		// via username. Direct read is justified under CLAUDE.md DB rules
+		// via username. Direct read is justified under DEVELOPMENT.md DB rules
 		// (reads of other modules' tables OK when no BMO method exposes the
 		// data efficiently). Read-only, never writes.
 		$rows = [];

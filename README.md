@@ -629,7 +629,7 @@ Frogman is developed collaboratively with AI assistance. AI is used for code gen
 
 Frogman welcomes contributions — including vibe-coded ones. If you used AI to help write your PR, that's great. Just make sure it works, follows the existing patterns, and you've tested it.
 
-See [CLAUDE.md](CLAUDE.md) for codebase conventions and how to add new tools.
+See [DEVELOPMENT.md](DEVELOPMENT.md) for codebase conventions and how to add new tools.
 
 ## Disclaimer
 

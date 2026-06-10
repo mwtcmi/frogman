@@ -1,4 +1,4 @@
-# CLAUDE.md — Frogman Development Guide
+# Frogman Development Guide
 
 ## What is this project?
 
