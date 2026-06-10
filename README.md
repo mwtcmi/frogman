@@ -1,6 +1,6 @@
 # Frogman 🐸
 
-**Headless PBX control through MCP and HTTP API.** Any AI, bot, or app connects and manages FreePBX through 248 tools. No GraphQL needed.
+**Headless PBX control through MCP and HTTP API.** Any AI, bot, or app connects and manages FreePBX through 253 tools. No GraphQL needed.
 
 Connect via MCP and ask "why can't extension 101 make calls?" — Frogman runs live diagnostics, searches its built-in knowledge base, and hands the AI everything it needs to answer.
 
@@ -77,9 +77,9 @@ This is optional — all other tools work without it. Without this, service tool
 
 ## Architecture
 
-Frogman is the MCP server — the AI interface to the PBX. Frogman is the FreePBX module that provides the 248 tools it exposes. Together, they have two interfaces:
+Frogman is the MCP server — the AI interface to the PBX. Frogman is the FreePBX module that provides the 253 tools it exposes. Together, they have two interfaces:
 
-- **MCP Server** — the core product. Any AI connects via MCP and uses 248 tools to control, diagnose, and troubleshoot the PBX. This is where RAG, reasoning, and intelligent support happen.
+- **MCP Server** — the core product. Any AI connects via MCP and uses 253 tools to control, diagnose, and troubleshoot the PBX. This is where RAG, reasoning, and intelligent support happen.
 - **Web Console & CLI** — a human-friendly chat interface using pattern matching. Same tools, no AI required. Useful for quick tasks without an MCP client.
 
 ### Tool Routing Hierarchy
@@ -117,7 +117,7 @@ Reads from other modules' tables are fine. Writes to other modules go through BM
 
 Contributors: see [CONTRIBUTING.md](./CONTRIBUTING.md) for the full rules, why they exist, and how to add a tool.
 
-## Tool Catalog (248 tools)
+## Tool Catalog (253 tools)
 
 ### Extensions (7)
 
@@ -171,12 +171,22 @@ Contributors: see [CONTRIBUTING.md](./CONTRIBUTING.md) for the full rules, why t
 | `fm_get_dnd` | Get Do Not Disturb status |
 | `fm_toggle_dnd` | Toggle Do Not Disturb **[confirm]** |
 
-### Voicemail (2)
+### Voicemail (4)
 
 | Tool | Description |
 |------|-------------|
-| `fm_list_voicemail` | List all voicemail boxes |
+| `fm_list_voicemail` | List all voicemail boxes — chat: `list voicemail boxes`, `list voicemail settings` |
 | `fm_get_voicemail` | Voicemail box details and message count |
+| `fm_list_voicemails` | List voicemail messages via Voicemail BMO with inline play chips. Scribe transcript URLs included when Scribe is licensed — chat: `voicemails`, `list voicemails`, `voicemails for <mb>`, `voicemails in <folder>` |
+| `fm_voicemail_summary` | Per-mailbox new/old/urgent counts — chat: `voicemail summary` |
+
+### Call Recordings (3)
+
+| Tool | Description |
+|------|-------------|
+| `fm_list_call_recordings` | List CDR-backed call recordings with inline play chips and 30-min auth-gated stream tokens. Filters: caller, callee, name, ext, disposition, min_duration, time-window grammar — chat: `recordings`, `list recordings`, `recordings today`, `recordings from <name>`, `recordings for <ext>`, `list recordings for <ext>` |
+| `fm_list_conference_recordings` | ConfBridge / Meetme conference recordings, same play-chip pattern — chat: `conference recordings` |
+| `fm_recording_stats` | Discovery layer: totals, top extensions by recorded calls, per-day histogram — chat: `recording stats` |
 
 ### Queues (2)
 

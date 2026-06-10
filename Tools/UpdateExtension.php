@@ -31,7 +31,7 @@ class UpdateExtension extends AbstractTool {
 	}
 
 	public function description() {
-		return 'Update an existing extension in place. Params: ext (required), confirm:true to execute. Any subset of these fields gets updated; unspecified fields keep their current value. User: name, outboundcid, ringtimer (0-300 sec, 0=system default), mohclass, callwaiting (enabled|disabled), concurrency_limit (0-100, 0=unlimited), accountcode, recording_in_external / recording_out_external / recording_in_internal / recording_out_internal (dontcare|always|never|onlydestination|onlysource). Device: secret, callerid (device-level), dtmfmode (rfc4733|inband|info|auto), transport, allow (comma-separated codec allowlist), disallow, max_contacts (1-10). Voicemail, follow-me, Userman and every other extension setting are preserved.';
+		return 'Update an existing extension in place. Params: ext (required), confirm:true to execute. Any subset of these fields gets updated; unspecified fields keep their current value. User: name, outboundcid, ringtimer (0-300 sec, 0=system default), mohclass, callwaiting (enabled|disabled), concurrency_limit (0-100, 0=unlimited), accountcode, recording_in_external / recording_out_external / recording_in_internal / recording_out_internal (dontcare|always|never|onlydestination|onlysource). Device: secret, callerid (device-level), dtmfmode (rfc4733|inband|info|auto), transport, allow (comma-separated codec allowlist), disallow, max_contacts (1-10), direct_media (yes|no; flip to no when calls need to flow through the PBX, e.g. for MixMonitor recording or NAT). Voicemail, follow-me, Userman and every other extension setting are preserved.';
 	}
 
 	// Map of user-friendly param key → ['side' (user|device), 'col' (DB col),
@@ -70,6 +70,7 @@ class UpdateExtension extends AbstractTool {
 			'allow'                    => ['side' => 'device', 'col' => 'allow'],
 			'disallow'                 => ['side' => 'device', 'col' => 'disallow'],
 			'max_contacts'             => ['side' => 'device', 'col' => 'max_contacts',             'validator' => $intRange(1, 10)],
+			'direct_media'             => ['side' => 'device', 'col' => 'direct_media',             'validator' => $enum(['yes', 'no'])],
 		];
 	}
 

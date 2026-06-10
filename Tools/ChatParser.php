@@ -628,6 +628,46 @@ class ChatParser {
 			$params = self::parseTimeClause($m[1] ?? '');
 			return ['tool' => 'fm_get_queue_log', 'params' => $params];
 		}
+
+		// ── Recordings + Voicemails ──
+		// Time-clause-aware grammar matching the v2.3.0 reporting pattern. Name
+		// capture uses non-greedy match with the optional trailing time clause
+		// acting as the cut point, so "recordings from tom last week" splits
+		// cleanly into name=tom + time=last week.
+		$timeRe = '(today|yesterday|this\\s+week|last\\s+week|this\\s+month|last\\s+month|last\\s+\\d+\\s+(?:hours?|days?|weeks?|months?)|from\\s+\\S+(?:\\s+to\\s+\\S+)?)';
+		if (preg_match('/^(?:call\s+|show\s+(?:me\s+)?(?:call\s+)?|list\s+(?:call\s+)?)?recordings?(?:\s+(?:from|of|by)\s+(.+?))?(?:\s+' . $timeRe . ')?$/i', $msg, $m)) {
+			$params = !empty($m[2]) ? self::parseTimeClause($m[2]) : [];
+			if (!empty($m[1])) $params['name'] = trim($m[1]);
+			return ['tool' => 'fm_list_call_recordings', 'params' => $params];
+		}
+		if (preg_match('/^(?:call\s+|show\s+(?:me\s+)?(?:call\s+)?|list\s+(?:call\s+)?)?recordings?\s+(?:for|with)\s+(?:ext\s+|extension\s+)?(\d+)(?:\s+' . $timeRe . ')?$/i', $msg, $m)) {
+			$params = !empty($m[2]) ? self::parseTimeClause($m[2]) : [];
+			$params['ext'] = $m[1];
+			return ['tool' => 'fm_list_call_recordings', 'params' => $params];
+		}
+		if (preg_match('/^(?:show\s+)?conf(?:erence)?\s+recordings?(?:\s+' . $timeRe . ')?$/i', $msg, $m)) {
+			$params = !empty($m[1]) ? self::parseTimeClause($m[1]) : [];
+			return ['tool' => 'fm_list_conference_recordings', 'params' => $params];
+		}
+		if (preg_match('/^recording\s+(?:stats|activity|summary)(?:\s+' . $timeRe . ')?$/i', $msg, $m)) {
+			$params = !empty($m[1]) ? self::parseTimeClause($m[1]) : [];
+			return ['tool' => 'fm_recording_stats', 'params' => $params];
+		}
+		// Voicemails. "voicemails", "voicemails for 1005", "voicemails in old",
+		// "voicemails for 1005 in urgent". Folder case-insensitive at parse,
+		// canonicalized to INBOX/Old/Urgent before the tool runs.
+		if (preg_match('/^(?:show\s+|list\s+)?voicemails?(?:\s+for\s+(?:mailbox\s+|ext\s+|extension\s+)?(\S+))?(?:\s+in\s+(inbox|old|urgent|family|friends|work))?$/i', $msg, $m)) {
+			$params = [];
+			if (!empty($m[1])) $params['mailbox'] = trim($m[1]);
+			if (!empty($m[2])) {
+				$folderMap = ['inbox'=>'INBOX','old'=>'Old','urgent'=>'Urgent','family'=>'Family','friends'=>'Friends','work'=>'Work'];
+				$params['folder'] = $folderMap[strtolower($m[2])] ?? 'INBOX';
+			}
+			return ['tool' => 'fm_list_voicemails', 'params' => $params];
+		}
+		if (preg_match('/^voicemail\s+(?:summary|counts?)$/i', $lower)) {
+			return ['tool' => 'fm_voicemail_summary', 'params' => []];
+		}
 		// DID destination map — Mermaid flowchart LR of every DID and where it terminates.
 		// Optional "filter X" (DID/description match) and "to Y" (destination match).
 		if (preg_match('/^(?:did\s+(?:destination\s+)?map|inbound\s+map|show\s+(?:did\s+)?(?:destination\s+)?map|where\s+do\s+(?:my\s+)?dids\s+go)(?:\s+filter\s+(\S+))?(?:\s+to\s+(.+))?$/i', $msg, $m)) {
@@ -2280,6 +2320,18 @@ class ChatParser {
 **DID Map:**
   `did map` / `inbound map` / `where do my dids go` — Mermaid flowchart of every DID's first-hop destination
 
+**Call Recordings + Voicemails:**
+  `recordings` / `list recordings` / `call recordings` — list call recordings (today, with play chips)
+  `recordings from <name>` — filter by caller/callee name
+  `recordings for <ext>` — filter by extension
+  `conference recordings` — ConfBridge / Meetme recordings only
+  `recording stats` — counts by extension, by day
+  `voicemails` / `show voicemails` — list voicemails (all mailboxes, INBOX)
+  `voicemails for <ext>` — single mailbox
+  `voicemails in <folder>` — INBOX / Old / Urgent
+  `voicemail summary` — per-mailbox new/old/urgent counts
+  (any of the above accept trailing time clause: today, yesterday, this week, last week, last 30 days, from 2026-05-01 to 2026-05-31)
+
 **PBX Route Map:**
   `route map` / `pbx route map` / `map pbx` — full PBX call-routing graph (every entrypoint, every branch, deduped)
   `route map summary` / `pbx topology` — node/edge counts only, no Mermaid (for large PBXs)
@@ -2350,7 +2402,7 @@ class ChatParser {
   `list parking`
 
 **Recordings & MOH:**
-  `list recordings` / `list moh`
+  `list system recordings` / `list moh`
 
 **Feature Codes:**
   `list feature codes`

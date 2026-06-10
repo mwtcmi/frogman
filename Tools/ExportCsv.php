@@ -58,8 +58,13 @@ class ExportCsv extends AbstractTool {
 			return ['type' => $type, 'count' => 0, 'file' => null, 'message' => "No {$type} data to export."];
 		}
 
-		// Write CSV
-		$filename = "frogman-{$type}-" . date('Ymd-His') . '.csv';
+		// Filename embeds a 12-hex-char nonce so a sibling admin can't enumerate
+		// other admins' exports by guessing timestamps. Per-caller scoping at
+		// download time is enforced by the token row in oc_downloads; the
+		// unguessable filename is belt-and-braces in case the legacy
+		// /command=download endpoint is ever reached. Closes issue #20.
+		$nonce = bin2hex(random_bytes(6));
+		$filename = "frogman-{$type}-" . date('Ymd-His') . "-{$nonce}.csv";
 		$exportDir = __DIR__ . '/../assets/exports';
 		if (!is_dir($exportDir)) mkdir($exportDir, 0755, true);
 		$filepath = $exportDir . '/' . $filename;
@@ -71,7 +76,23 @@ class ExportCsv extends AbstractTool {
 		}
 		fclose($fp);
 
-		$url = "ajax.php?module=frogman&command=download&file={$filename}";
+		// TTL cleanup. Drop exports older than 7 days from disk so the directory
+		// can't grow unboundedly. Issue #20's second concern. Cheap, no cron.
+		$cutoff = time() - (7 * 86400);
+		foreach (glob($exportDir . '/frogman-*.csv') ?: [] as $stale) {
+			if (filemtime($stale) < $cutoff) {
+				@unlink($stale);
+			}
+		}
+
+		// Mint an auth-gated, per-caller download token. The URL exposes only
+		// the token; the real path lives in oc_downloads. Frogman is on the
+		// caller's BMO chain via $this->frogman.
+		$url = $this->frogman->mintDownload('export', $filepath, [
+			'mime_type' => 'text/csv',
+			'display_name' => $filename,
+			'ttl' => 900, // 15 min — exports are click-once and the chat keeps the link visible
+		]);
 
 		return [
 			'type' => $type,

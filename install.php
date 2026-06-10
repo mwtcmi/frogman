@@ -121,6 +121,39 @@ try {
 	throw $e;
 }
 
+// v2.7.0 — defensive create for oc_downloads. Doctrine reconciler usually handles
+// the module.xml <database> block, but a fast path here keeps install.php
+// idempotent and avoids the "module.xml says table exists but reconciler skipped
+// it" failure mode that has bitten other migrations. CREATE IF NOT EXISTS so
+// re-running is safe.
+try {
+	$frogmanDb->query("CREATE TABLE IF NOT EXISTS oc_downloads (
+		id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+		token VARCHAR(64) NOT NULL DEFAULT '',
+		caller VARCHAR(100) NOT NULL DEFAULT '',
+		kind VARCHAR(20) NOT NULL DEFAULT '',
+		file_path TEXT NULL,
+		mime_type VARCHAR(80) NOT NULL DEFAULT 'application/octet-stream',
+		display_name VARCHAR(255) NULL,
+		meta TEXT NULL,
+		created_at INT UNSIGNED NOT NULL DEFAULT 0,
+		expires_at INT UNSIGNED NOT NULL DEFAULT 0,
+		accessed_at INT UNSIGNED NULL,
+		access_count INT UNSIGNED NOT NULL DEFAULT 0,
+		UNIQUE KEY idx_oc_downloads_token (token),
+		KEY idx_oc_downloads_caller (caller),
+		KEY idx_oc_downloads_expires (expires_at)
+	) ENGINE=InnoDB DEFAULT CHARSET=utf8");
+	if (function_exists('out')) {
+		out(_("Frogman: ensured oc_downloads table exists (v2.7.0)."));
+	}
+} catch (\Throwable $e) {
+	if (function_exists('out')) {
+		out(_("Frogman: oc_downloads migration failed: ") . $e->getMessage());
+	}
+	throw $e;
+}
+
 // Tokens sidebar / posture audit support — record when each token was last used
 // for auth. Powers the Tokens panel in views/main.php (stale-badge + last-used
 // column) and any future fm_audit_token_posture. Idempotent SHOW COLUMNS guard

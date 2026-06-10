@@ -44,6 +44,18 @@ $(function() {
 			if (/^\s*(javascript|data|vbscript):/i.test(url)) return escapeHtml(label);
 			return '<a href="' + escapeHtml(url) + '" download class="oc-download" target="_blank">📥 ' + escapeHtml(label) + '</a>';
 		});
+		// Inline audio player: {{audio:url|label}} renders as a labeled <audio
+		// controls> element. URL is scheme-checked the same way as download links
+		// so a tool response can't sneak a javascript:/data: URL into the src
+		// attribute. preload=none avoids burning bandwidth on every recording in
+		// a long listing — the user only pays the byte cost on actual play.
+		text = text.replace(/\{\{audio:([^|]+)\|([^}]+)\}\}/g, function(m, url, label) {
+			if (/^\s*(javascript|data|vbscript):/i.test(url)) return escapeHtml(label);
+			return '<span class="oc-audio">' +
+				'<span class="oc-audio-label">▶ ' + escapeHtml(label) + '</span>' +
+				'<audio controls preload="none" src="' + escapeHtml(url) + '"></audio>' +
+				'</span>';
+		});
 		// Clickable commands: {{cmd:command text|display label}}
 		text = text.replace(/\{\{cmd:([^|]+)\|([^}]+)\}\}/g, function(m, cmd, label) {
 			return '<span class="oc-clickable" data-cmd="' + escapeHtml(cmd) + '">' + escapeHtml(label) + '</span>';

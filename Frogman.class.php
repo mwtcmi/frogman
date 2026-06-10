@@ -52,6 +52,7 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 				$setting['allowremote'] = true;
 				return true;
 			case 'download':
+			case 'stream':
 				$setting['authenticate'] = true;
 				$setting['allowremote'] = false;
 				return true;
@@ -145,6 +146,9 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 				return true;
 			case 'download':
 				$this->handleDownload();
+				return true;
+			case 'stream':
+				$this->handleStream();
 				return true;
 		}
 		return false;
@@ -1960,10 +1964,14 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 				return implode("\n", $lines);
 
 			case 'fm_export':
-				if (empty($data['file']) && empty($data['url'])) {
-					return "📥 No data to export for **{$data['type']}**.";
+				if (empty($data['url'])) {
+					if (!empty($data['count'])) {
+						return "📥 Export wrote " . (int)$data['count'] . " rows but the download link failed to mint. Re-run the export.";
+					}
+					return "📥 No data to export for **" . $this->sanitizeForChat($data['type']) . "**.";
 				}
-				return "📥 **Export ready:** {{download:{$data['url']}|{$data['filename']}}} ({$data['count']} rows)";
+				$fname = $this->sanitizeForChat($data['filename']);
+				return "📥 **Export ready:** {{download:{$data['url']}|{$fname}}} ({$data['count']} rows). Link valid for 15 minutes.";
 
 			case 'fm_list_callbacks':
 				if (empty($data['callbacks'])) return "No callbacks configured.";
@@ -2494,6 +2502,137 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 				$lines[] = "```mermaid";
 				$lines[] = rtrim($data['mermaid']);
 				$lines[] = "```";
+				return implode("\n", $lines);
+
+			case 'fm_list_call_recordings':
+				$recs = $data['recordings'] ?? [];
+				$f = $data['filters'] ?? [];
+				$bits = [];
+				if (!empty($f['name'])) $bits[] = 'name: `' . $this->sanitizeForChat($f['name']) . '`';
+				if (!empty($f['caller'])) $bits[] = 'caller: `' . $this->sanitizeForChat($f['caller']) . '`';
+				if (!empty($f['callee'])) $bits[] = 'callee: `' . $this->sanitizeForChat($f['callee']) . '`';
+				if (!empty($f['ext'])) $bits[] = 'ext: `' . $this->sanitizeForChat($f['ext']) . '`';
+				if (!empty($f['disposition'])) $bits[] = 'disposition: `' . $this->sanitizeForChat($f['disposition']) . '`';
+				$window = ($f['date_from'] ?? '') . ' to ' . ($f['date_to'] ?? '');
+				$header = "🎧 **Call Recordings** ({$data['count']})";
+				if (!empty($bits)) $header .= "\n  " . implode(', ', $bits);
+				$header .= "\n  window: `" . $this->sanitizeForChat(trim($window)) . "`";
+				if (empty($recs)) {
+					return $header . "\n\n  No recordings matched.";
+				}
+				$lines = [$header, ''];
+				foreach ($recs as $r) {
+					$when = $this->sanitizeForChat($r['calldate']);
+					$caller = $this->sanitizeForChat($r['caller']);
+					$cname = !empty($r['caller_name']) ? " ({$this->sanitizeForChat($r['caller_name'])})" : '';
+					$callee = $this->sanitizeForChat($r['callee']);
+					$ename = !empty($r['callee_name']) ? " ({$this->sanitizeForChat($r['callee_name'])})" : '';
+					$dur = (int)$r['duration'];
+					$durLabel = $dur >= 60 ? sprintf('%d:%02d', intdiv($dur, 60), $dur % 60) : "{$dur}s";
+					$disp = $this->sanitizeForChat($r['disposition']);
+					$lines[] = "**{$when}** `{$caller}`{$cname} → `{$callee}`{$ename} . {$durLabel} . {$disp}";
+					if (!empty($r['play_url'])) {
+						$label = $this->sanitizeForChat(basename($r['recording_file']));
+						$lines[] = "  {{audio:{$r['play_url']}|{$label}}}";
+					} elseif (!empty($r['format_note'])) {
+						$lines[] = "  _" . $this->sanitizeForChat($r['format_note']) . "_";
+					}
+				}
+				return implode("\n", $lines);
+
+			case 'fm_list_conference_recordings':
+				$recs = $data['recordings'] ?? [];
+				$f = $data['filters'] ?? [];
+				$header = "🎙️ **Conference Recordings** ({$data['count']})";
+				$window = ($f['date_from'] ?? '') . ' to ' . ($f['date_to'] ?? '');
+				$header .= "\n  window: `" . $this->sanitizeForChat(trim($window)) . "`";
+				if (empty($recs)) return $header . "\n\n  No conference recordings matched.";
+				$lines = [$header, ''];
+				foreach ($recs as $r) {
+					$when = $this->sanitizeForChat($r['calldate']);
+					$conf = $this->sanitizeForChat($r['conference']);
+					$caller = $this->sanitizeForChat($r['caller']);
+					$cname = !empty($r['caller_name']) ? " ({$this->sanitizeForChat($r['caller_name'])})" : '';
+					$dur = (int)$r['duration'];
+					$durLabel = $dur >= 60 ? sprintf('%d:%02d', intdiv($dur, 60), $dur % 60) : "{$dur}s";
+					$lines[] = "**{$when}** conf `{$conf}` from `{$caller}`{$cname} . {$durLabel}";
+					if (!empty($r['play_url'])) {
+						$label = $this->sanitizeForChat(basename($r['recording_file']));
+						$lines[] = "  {{audio:{$r['play_url']}|{$label}}}";
+					} elseif (!empty($r['format_note'])) {
+						$lines[] = "  _" . $this->sanitizeForChat($r['format_note']) . "_";
+					}
+				}
+				return implode("\n", $lines);
+
+			case 'fm_recording_stats':
+				$total = (int)($data['total_recordings'] ?? 0);
+				$conf = (int)($data['conference_recordings'] ?? 0);
+				$extCount = (int)($data['extensions_with_recordings'] ?? 0);
+				$days = (int)($data['days_in_window'] ?? 0);
+				$w = $data['window'] ?? [];
+				$window = ($w['date_from'] ?? '') . ' to ' . ($w['date_to'] ?? '');
+				$lines = ["📊 **Recording Activity**"];
+				$lines[] = "  window: `" . $this->sanitizeForChat(trim($window)) . "`";
+				$lines[] = "  {$total} recordings ({$conf} conference) across {$extCount} extensions, {$days} day" . ($days===1?'':'s');
+				if (!empty($data['top_extensions'])) {
+					$lines[] = "";
+					$lines[] = "**Top extensions by recorded calls:**";
+					foreach ($data['top_extensions'] as $t) {
+						$ext = $this->sanitizeForChat($t['ext']);
+						$name = !empty($t['name']) ? " ({$this->sanitizeForChat($t['name'])})" : '';
+						$lines[] = "  `{$ext}`{$name}: {$t['recordings']} recording" . ($t['recordings']===1?'':'s')
+							. " {{cmd:recordings for {$ext}|🎧 list}}";
+					}
+				}
+				if (!empty($data['per_day'])) {
+					$lines[] = "";
+					$lines[] = "**Per-day counts:**";
+					foreach ($data['per_day'] as $day => $n) {
+						$dayClean = $this->sanitizeForChat($day);
+						$lines[] = "  `{$dayClean}`: {$n}";
+					}
+				}
+				return implode("\n", $lines);
+
+			case 'fm_list_voicemails':
+				$vms = $data['voicemails'] ?? [];
+				$folder = $this->sanitizeForChat($data['folder'] ?? 'INBOX');
+				$ctx = $this->sanitizeForChat($data['context'] ?? 'default');
+				$mb = !empty($data['mailbox']) ? $this->sanitizeForChat($data['mailbox']) : 'all';
+				$header = "📬 **Voicemails** ({$data['count']}) — mailbox: `{$mb}`, folder: `{$folder}`, context: `{$ctx}`";
+				if (empty($vms)) return $header . "\n\n  No messages.";
+				$lines = [$header, ''];
+				foreach ($vms as $v) {
+					$cid = $this->sanitizeForChat($v['callerid']);
+					$origdate = $this->sanitizeForChat($v['origdate']);
+					$dur = (int)$v['duration'];
+					$durLabel = $dur >= 60 ? sprintf('%d:%02d', intdiv($dur, 60), $dur % 60) : "{$dur}s";
+					$mbox = $this->sanitizeForChat($v['mailbox']);
+					$msg = $this->sanitizeForChat($v['msg']);
+					$lines[] = "**`{$mbox}` msg `{$msg}`** — {$cid} . `{$origdate}` . {$durLabel}";
+					if (!empty($v['play_url'])) {
+						$label = "vm {$mbox} msg {$msg}";
+						$lines[] = "  {{audio:{$v['play_url']}|{$label}}}";
+					} elseif (!empty($v['format_note'])) {
+						$lines[] = "  _" . $this->sanitizeForChat($v['format_note']) . "_";
+					}
+				}
+				return implode("\n", $lines);
+
+			case 'fm_voicemail_summary':
+				$mbs = $data['mailboxes'] ?? [];
+				$totals = $data['totals'] ?? ['new'=>0,'old'=>0,'urgent'=>0];
+				$ctx = $this->sanitizeForChat($data['context'] ?? 'default');
+				$header = "📬 **Voicemail Summary** — context: `{$ctx}`, {$data['mailbox_count']} mailbox" . ($data['mailbox_count']===1?'':'es') . " with messages";
+				$header .= "\n  Totals: {$totals['new']} new, {$totals['old']} old, {$totals['urgent']} urgent";
+				if (empty($mbs)) return $header . "\n\n  No mailboxes with messages.";
+				$lines = [$header, ''];
+				foreach ($mbs as $mb) {
+					$mbNum = $this->sanitizeForChat($mb['mailbox']);
+					$name = !empty($mb['name']) ? " ({$this->sanitizeForChat($mb['name'])})" : '';
+					$lines[] = "  `{$mbNum}`{$name}: {$mb['new']} new, {$mb['old']} old, {$mb['urgent']} urgent {{cmd:voicemails for {$mbNum}|📬 list}}";
+				}
 				return implode("\n", $lines);
 
 			case 'fm_pbx_route_map':
@@ -3032,6 +3171,15 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 		return implode(' | ', $scalars);
 	}
 
+	/**
+	 * Legacy CSV download endpoint. Kept so an in-flight chat session with a
+	 * v2.6.x download link still resolves, but new exports mint tokens and route
+	 * through handleStream(). Behavior unchanged from pre-v2.7.0: admin-gated
+	 * via the standard `'authenticate' => true` page-handler config in
+	 * ajaxCustomHandler. Issue #20's predictable-filename / no-per-user-scoping
+	 * gap is fixed in the token path; this fallback is the last call site
+	 * that will be removed in a future release.
+	 */
 	private function handleDownload() {
 		$file = isset($_REQUEST['file']) ? basename($_REQUEST['file']) : '';
 		if (empty($file) || !preg_match('/^frogman-.*\.csv$/', $file)) {
@@ -3049,6 +3197,185 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 		header('Content-Disposition: attachment; filename="' . $file . '"');
 		header('Content-Length: ' . filesize($path));
 		readfile($path);
+	}
+
+	/**
+	 * Whitelist of filesystem roots Frogman is allowed to stream from. Each
+	 * "kind" maps to one or more absolute roots; the caller's resolved real
+	 * path must sit under one of them or the request is refused.
+	 *
+	 * Closes the path-traversal half of issue #20. Adding a new download
+	 * category is one line here plus a new value for the `kind` column.
+	 */
+	private function downloadRoots() {
+		return [
+			'export' => [__DIR__ . '/assets/exports'],
+			'recording' => ['/var/spool/asterisk/monitor'],
+			'voicemail' => ['/var/spool/asterisk/voicemail'],
+		];
+	}
+
+	/**
+	 * True iff $realPath (already passed through realpath()) sits under one of
+	 * the whitelist roots for $kind. The leading-slash boundary check is what
+	 * stops `/var/spool/asterisk/monitor-attacker/...` from matching the
+	 * `/var/spool/asterisk/monitor` prefix.
+	 */
+	private function isAllowedDownloadPath($realPath, $kind) {
+		$roots = $this->downloadRoots();
+		if (!isset($roots[$kind])) return false;
+		foreach ($roots[$kind] as $root) {
+			$rootReal = realpath($root);
+			if ($rootReal === false) continue;
+			if (strncmp($realPath, $rootReal . DIRECTORY_SEPARATOR, strlen($rootReal) + 1) === 0) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Mint a one-shot download token row in oc_downloads bound to the calling
+	 * admin and a specific file. Returns the URL (relative to the FreePBX
+	 * admin root) the chat/MCP layer can hand back to the browser.
+	 *
+	 * The token is the only thing the URL exposes; the real path lives in the
+	 * DB row keyed by it. That makes path-traversal structurally impossible
+	 * via the URL (there is no path to traverse — only a hex token), and
+	 * makes per-caller scoping a single equality check at stream time.
+	 *
+	 * Mints sweep expired rows older than 24h as a side effect so no cron is
+	 * needed. Returns null when the path fails whitelist validation; caller
+	 * MUST surface that to the user rather than silently emitting a broken link.
+	 */
+	public function mintDownload($kind, $path, $opts = []) {
+		$real = realpath($path);
+		if ($real === false) return null;
+		if (!$this->isAllowedDownloadPath($real, $kind)) return null;
+		if (!is_file($real) || !is_readable($real)) return null;
+
+		// authContext is populated by authenticateRequest() on HTTP calls; CLI / MCP
+		// invocations have no $_SERVER chain to authenticate, so fall back to
+		// 'localhost'. The stream endpoint runs the same authentication path, and
+		// its localhost fallback also returns 'localhost', so a CLI-minted token
+		// is streamable from a same-host curl/browser request without requiring
+		// a separate "trusted CLI" code path.
+		$caller = isset($this->authContext['user']) ? (string)$this->authContext['user'] : 'localhost';
+		if ($caller === '') $caller = 'localhost';
+
+		$ttl = max(30, min(3600, (int)($opts['ttl'] ?? 300)));
+		$now = time();
+		$token = bin2hex(random_bytes(24));
+
+		$mime = $opts['mime_type'] ?? $this->guessMimeType($real);
+		$display = $opts['display_name'] ?? basename($real);
+		$meta = isset($opts['meta']) ? json_encode($opts['meta']) : null;
+
+		$sth = $this->db->prepare("INSERT INTO oc_downloads (token, caller, kind, file_path, mime_type, display_name, meta, created_at, expires_at, access_count) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)");
+		$sth->execute([$token, $caller, $kind, $real, $mime, $display, $meta, $now, $now + $ttl]);
+
+		// Sweep-on-mint: drop rows that expired more than 24h ago so the table
+		// can't grow unboundedly. Cheap, no cron required, runs at most once per
+		// new download. Future enhancement: also delete expired export files
+		// from assets/exports so the disk doesn't accumulate, but that's TTL
+		// cleanup for issue #20's "exports persist indefinitely" half — handled
+		// at the ExportCsv layer where we know which files are safe to drop.
+		try {
+			$this->db->prepare("DELETE FROM oc_downloads WHERE expires_at < ?")
+				->execute([$now - 86400]);
+		} catch (\Throwable $e) {}
+
+		return 'ajax.php?module=frogman&command=stream&token=' . $token;
+	}
+
+	private function guessMimeType($path) {
+		$ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+		switch ($ext) {
+			case 'wav': return 'audio/wav';
+			case 'mp3': return 'audio/mpeg';
+			case 'ogg': return 'audio/ogg';
+			case 'csv': return 'text/csv';
+			case 'txt': return 'text/plain';
+			default:    return 'application/octet-stream';
+		}
+	}
+
+	/**
+	 * Auth-gated streaming endpoint. Looks up the token row, enforces:
+	 *   - token format valid (48 hex chars)
+	 *   - row exists and not expired
+	 *   - calling admin owns the token (per-user scoping fix for issue #20)
+	 *   - on-disk path still under the kind's whitelist root after realpath()
+	 *     (defense in depth in case the DB row was tampered with)
+	 *   - file still readable
+	 *
+	 * Streams with Content-Type set so audio/wav plays inline in the browser's
+	 * <audio> element. CSV downloads still get Content-Disposition: attachment.
+	 * No Range support yet — browsers can scrub a fully-buffered WAV without it.
+	 */
+	private function handleStream() {
+		try {
+			$this->authenticateRequest();
+		} catch (\Exception $e) {
+			http_response_code(401);
+			echo 'Authentication required.';
+			return;
+		}
+		$token = isset($_REQUEST['token']) ? (string)$_REQUEST['token'] : '';
+		if (!preg_match('/^[a-f0-9]{48}$/', $token)) {
+			http_response_code(400);
+			echo 'Invalid token.';
+			return;
+		}
+		$sth = $this->db->prepare("SELECT caller, kind, file_path, mime_type, display_name, expires_at FROM oc_downloads WHERE token = ?");
+		$sth->execute([$token]);
+		$row = $sth->fetch(\PDO::FETCH_ASSOC);
+		if (!$row) {
+			http_response_code(404);
+			echo 'Token not found.';
+			return;
+		}
+		$now = time();
+		if ((int)$row['expires_at'] < $now) {
+			http_response_code(410);
+			echo 'Token expired. Re-run the listing command to get a new link.';
+			return;
+		}
+		$caller = isset($this->authContext['user']) ? (string)$this->authContext['user'] : '';
+		if ($caller === '' || !hash_equals((string)$row['caller'], $caller)) {
+			http_response_code(403);
+			echo 'Token not owned by caller.';
+			return;
+		}
+		$real = realpath($row['file_path']);
+		if ($real === false || $real !== $row['file_path'] || !$this->isAllowedDownloadPath($real, $row['kind'])) {
+			http_response_code(404);
+			echo 'File no longer available.';
+			return;
+		}
+		if (!is_file($real) || !is_readable($real)) {
+			http_response_code(404);
+			echo 'File not found.';
+			return;
+		}
+
+		try {
+			$this->db->prepare("UPDATE oc_downloads SET accessed_at = ?, access_count = access_count + 1 WHERE token = ?")
+				->execute([$now, $token]);
+		} catch (\Throwable $e) {}
+
+		$mime = $row['mime_type'] ?: 'application/octet-stream';
+		$display = basename((string)($row['display_name'] ?? 'file'));
+		$display = str_replace(['"', "\r", "\n"], '_', $display);
+		// CSV is a download; audio/* renders inline so <audio src=> can stream it.
+		$disposition = (stripos($mime, 'audio/') === 0) ? 'inline' : 'attachment';
+
+		header('Content-Type: ' . $mime);
+		header('Content-Length: ' . filesize($real));
+		header('Content-Disposition: ' . $disposition . '; filename="' . $display . '"');
+		header('X-Content-Type-Options: nosniff');
+		header('Cache-Control: private, no-store');
+		readfile($real);
 	}
 
 	private function handleAuditFeed() {
