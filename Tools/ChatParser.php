@@ -1379,6 +1379,21 @@ class ChatParser {
 			return ['tool' => 'fm_module_status', 'params' => ['name' => $m[3]]];
 		}
 
+		// ── Module Mirror (repo URL + active categories) ──
+		// "show module mirrors" / "mirror status" / "where am i pulling modules from"
+		if (preg_match('/^(show\s+)?(module\s+)?mirrors?(\s+status)?$/i', $lower)
+			|| preg_match('/^mirror\s+status$/i', $lower)
+			|| preg_match('/^where\s+am\s+i\s+pulling\s+modules?\s+from$/i', $lower)) {
+			return ['tool' => 'fm_module_mirror_status', 'params' => []];
+		}
+		// "restore Sangoma mirrors" / "switch back to Sangoma mirror(s)" / "reset module mirror(s)"
+		// Default to ensure_primary + auto-enable commercial (the whole point is to get
+		// paid-app updates back from Sangoma's mirror).
+		if (preg_match('/^(restore|switch\s+back\s+to|reset\s+to)\s+sangoma\s+(module\s+)?mirrors?$/i', $lower)
+			|| preg_match('/^reset\s+(the\s+)?module\s+mirrors?$/i', $lower)) {
+			return ['tool' => 'fm_module_mirror_restore_sangoma', 'params' => ['enable_categories' => ['commercial']]];
+		}
+
 		// ── Audit ──
 		if (preg_match('/^(show\s+)?(audit|log|history)(\s+(\d+))?$/i', $msg, $m)) {
 			$params = [];
@@ -2414,6 +2429,8 @@ class ChatParser {
   `show licensing` — commercial modules with registration/expiry + renewal link
   `check for upgrades` — query online repos (~10s)
   `module status <name>`
+  `show module mirrors` / `mirror status` — repo URL + which categories (standard/extended/commercial) are enabled
+  `restore Sangoma mirrors` — switch MODULE_REPO back to Sangoma's official mirror (also re-enables commercial category)
   `asterisk info` / `uptime` / `sys info` / `system info`
   `show sip settings` / `show firewall`
   `audit <n>`

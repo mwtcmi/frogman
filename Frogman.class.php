@@ -1002,6 +1002,108 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 				}
 				return implode("\n", $lines);
 
+			case 'fm_module_mirror_status': {
+				$current = $this->sanitizeForChat($data['current'] ?? '');
+				$default = $this->sanitizeForChat($data['default'] ?? '');
+				$primarySan = ($data['primary'] ?? null) ? $this->sanitizeForChat($data['primary']['url']) : '';
+				$lines = ["**Module Repository**"];
+
+				if (!empty($data['urls'])) {
+					$lines[] = "";
+					$lines[] = "URLs:";
+					foreach ($data['urls'] as $i => $row) {
+						$tag = !empty($row['is_sangoma']) ? '✅ Sangoma' : '⚠️ third-party';
+						$pos = $i === 0 ? 'primary' : 'fallback';
+						$urlSan = $this->sanitizeForChat($row['url']);
+						$lines[] = "  - `{$urlSan}` — {$pos}, {$tag}";
+					}
+				}
+
+				if (!empty($data['matches_default'])) {
+					$lines[] = "";
+					$lines[] = "✅ Matches the Sangoma default (`{$default}`).";
+				} else {
+					$lines[] = "";
+					$lines[] = "⚠️ Differs from the Sangoma default (`{$default}`).";
+				}
+
+				$active = $data['active_categories'] ?? [];
+				$remote = $data['remote_categories'] ?? [];
+				$missing = $data['missing_categories'] ?? [];
+				$lines[] = "";
+				$lines[] = "Categories enabled on this box: " . (empty($active) ? '(none)' : '`' . implode('`, `', array_map([$this, 'sanitizeForChat'], $active)) . '`');
+				if (!empty($remote)) {
+					$lines[] = "Categories advertised by remote: `" . implode('`, `', array_map([$this, 'sanitizeForChat'], $remote)) . "`";
+				}
+				if (!empty($missing)) {
+					$lines[] = "⚠️ Disabled on this box: `" . implode('`, `', array_map([$this, 'sanitizeForChat'], $missing)) . "`";
+				}
+				if (empty($data['commercial_enabled'])) {
+					$lines[] = "ℹ️ Commercial category is **off** — you won't see paid-module updates until it's re-enabled.";
+				}
+
+				$needsRestore = empty($data['matches_default']) || empty($data['commercial_enabled']);
+				if ($needsRestore) {
+					$lines[] = "";
+					$lines[] = "{{cmd:restore Sangoma mirrors|🔁 Restore Sangoma mirror}}";
+				}
+				return implode("\n", $lines);
+			}
+
+			case 'fm_module_mirror_restore_sangoma': {
+				if (!empty($data['no_op'])) {
+					return "✅ " . ($data['message'] ?? 'Nothing to change.');
+				}
+				if (!empty($data['dry_run'])) {
+					$current = $this->sanitizeForChat($data['current_repo'] ?? '');
+					$proposed = $this->sanitizeForChat($data['proposed_repo'] ?? '');
+					$lines = ["**Restore Sangoma Mirror — Preview**"];
+					if (!empty($data['url_change'])) {
+						$lines[] = "";
+						$lines[] = "MODULE_REPO would change:";
+						$lines[] = "  current: `{$current}`";
+						$lines[] = "  new:     `{$proposed}`";
+						if (($data['mode'] ?? '') === 'ensure_primary') {
+							$lines[] = "  mode: `ensure_primary` (Sangoma URLs primary, any third-party URLs kept as fallback)";
+						} else {
+							$lines[] = "  mode: `replace_all` (third-party URLs will be dropped)";
+						}
+					}
+					if (!empty($data['enable_categories'])) {
+						$cats = array_map([$this, 'sanitizeForChat'], $data['enable_categories']);
+						$lines[] = "";
+						$lines[] = "Would also enable categories: `" . implode('`, `', $cats) . "`";
+					}
+					if (!empty($data['category_warnings'])) {
+						foreach ($data['category_warnings'] as $w) {
+							$lines[] = "⚠️ " . $this->sanitizeForChat($w);
+						}
+					}
+					$lines[] = "";
+					$lines[] = "Reply **yes** to apply.";
+					return implode("\n", $lines);
+				}
+				$lines = ["✅ " . ($data['message'] ?? 'Module repository restored.')];
+				if (!empty($data['url_change'])) {
+					$prev = $this->sanitizeForChat($data['previous_repo'] ?? '');
+					$now  = $this->sanitizeForChat($data['new_repo'] ?? '');
+					$lines[] = "  was: `{$prev}`";
+					$lines[] = "  now: `{$now}`";
+				}
+				if (!empty($data['enabled_categories'])) {
+					$cats = array_map([$this, 'sanitizeForChat'], $data['enabled_categories']);
+					$lines[] = "  enabled categories: `" . implode('`, `', $cats) . "`";
+				}
+				if (!empty($data['category_warnings'])) {
+					foreach ($data['category_warnings'] as $w) {
+						$lines[] = "⚠️ " . $this->sanitizeForChat($w);
+					}
+				}
+				$lines[] = "";
+				$lines[] = "{{cmd:check for upgrades|⬆️ Check for upgrades}} • {{cmd:show module mirrors|↺ Re-check mirror}}";
+				return implode("\n", $lines);
+			}
+
 			case 'fm_check_upgrades':
 				if (empty($data['upgrades'])) {
 					return "All modules are up-to-date. ✅";

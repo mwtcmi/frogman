@@ -1,6 +1,6 @@
 # Frogman 🐸
 
-**Headless PBX control through MCP and HTTP API.** Any AI, bot, or app connects and manages FreePBX through 253 tools. No GraphQL needed.
+**Headless PBX control through MCP and HTTP API.** Any AI, bot, or app connects and manages FreePBX through 255 tools. No GraphQL needed.
 
 Connect via MCP and ask "why can't extension 101 make calls?" — Frogman runs live diagnostics, searches its built-in knowledge base, and hands the AI everything it needs to answer.
 
@@ -77,9 +77,9 @@ This is optional — all other tools work without it. Without this, service tool
 
 ## Architecture
 
-Frogman is the MCP server — the AI interface to the PBX. Frogman is the FreePBX module that provides the 253 tools it exposes. Together, they have two interfaces:
+Frogman is the MCP server — the AI interface to the PBX. Frogman is the FreePBX module that provides the 255 tools it exposes. Together, they have two interfaces:
 
-- **MCP Server** — the core product. Any AI connects via MCP and uses 253 tools to control, diagnose, and troubleshoot the PBX. This is where RAG, reasoning, and intelligent support happen.
+- **MCP Server** — the core product. Any AI connects via MCP and uses 255 tools to control, diagnose, and troubleshoot the PBX. This is where RAG, reasoning, and intelligent support happen.
 - **Web Console & CLI** — a human-friendly chat interface using pattern matching. Same tools, no AI required. Useful for quick tasks without an MCP client.
 
 ### Tool Routing Hierarchy
@@ -117,7 +117,7 @@ Reads from other modules' tables are fine. Writes to other modules go through BM
 
 Contributors: see [CONTRIBUTING.md](./CONTRIBUTING.md) for the full rules, why they exist, and how to add a tool.
 
-## Tool Catalog (253 tools)
+## Tool Catalog (255 tools)
 
 ### Extensions (7)
 
@@ -273,7 +273,7 @@ Contributors: see [CONTRIBUTING.md](./CONTRIBUTING.md) for the full rules, why t
 | `fm_list_moh` | List music on hold categories |
 | `fm_list_recordings` | List all system recordings |
 
-### System (8)
+### System (10)
 
 | Tool | Description |
 |------|-------------|
@@ -281,6 +281,8 @@ Contributors: see [CONTRIBUTING.md](./CONTRIBUTING.md) for the full rules, why t
 | `fm_module_list` | List FreePBX modules. Optional filters: `status`, `license` (commercial/gpl/gpl2/gpl3/agpl/other), `all`. Chat shows a clickable summary by default — chat: `list modules`, `list modules commercial`, `list all modules` |
 | `fm_check_upgrades` | Query online repos for module upgrades (~10s, network call). Per-row "⬆️ Upgrade" chip and bottom "⬆️ Upgrade all" chip — chat: `check for upgrades` |
 | `fm_module_status` | Detailed status of a specific module |
+| `fm_module_mirror_status` | Show the FreePBX module repository (mirror) URL plus which repo categories (standard/extended/commercial) are enabled. Flags non-Sangoma URLs and disabled categories — chat: `show module mirrors`, `mirror status` |
+| `fm_module_mirror_restore_sangoma` | Switch MODULE_REPO back to Sangoma's official mirror. `ensure_primary` keeps any third-party URLs as fallback; `replace_all` drops them. Optional `enable_categories` re-enables shelves like `commercial` **[confirm]** — chat: `restore Sangoma mirrors` |
 | `fm_get_asterisk_info` | Asterisk uptime, version, channels, registrations |
 | `fm_get_firewall_status` | Firewall and intrusion detection status |
 | `fm_get_sip_settings` | SIP/PJSIP settings — external IP, NAT, ports |
