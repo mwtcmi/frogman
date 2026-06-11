@@ -1391,7 +1391,9 @@ class ChatParser {
 		// paid-app updates back from Sangoma's mirror).
 		if (preg_match('/^(restore|switch\s+back\s+to|reset\s+to)\s+sangoma\s+(module\s+)?mirrors?$/i', $lower)
 			|| preg_match('/^reset\s+(the\s+)?module\s+mirrors?$/i', $lower)) {
-			return ['tool' => 'fm_module_mirror_restore_sangoma', 'params' => ['enable_categories' => ['commercial']]];
+			$params = ['enable_categories' => ['commercial']];
+			self::setPending($sessionId, 'fm_module_mirror_restore_sangoma', $params);
+			return ['tool' => 'fm_module_mirror_restore_sangoma', 'params' => $params];
 		}
 
 		// ── Audit ──

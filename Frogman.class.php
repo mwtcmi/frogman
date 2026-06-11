@@ -1012,19 +1012,20 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 					$lines[] = "";
 					$lines[] = "URLs:";
 					foreach ($data['urls'] as $i => $row) {
-						$tag = !empty($row['is_sangoma']) ? '✅ Sangoma' : '⚠️ third-party';
+						$tag = !empty($row['is_sangoma']) ? '✅ Sangoma' : '😬 third-party';
 						$pos = $i === 0 ? 'primary' : 'fallback';
 						$urlSan = $this->sanitizeForChat($row['url']);
-						$lines[] = "  - `{$urlSan}` — {$pos}, {$tag}";
+						$lines[] = "  - `{$urlSan}` ({$pos}, {$tag})";
 					}
 				}
 
+				$lines[] = "";
 				if (!empty($data['matches_default'])) {
-					$lines[] = "";
-					$lines[] = "✅ Matches the Sangoma default (`{$default}`).";
+					$lines[] = "✅ On the Sangoma default (`{$default}`).";
+				} elseif (!empty($data['primary_is_sangoma'])) {
+					$lines[] = "✅ Primary is the Sangoma default. Third-party fallback URL(s) present.";
 				} else {
-					$lines[] = "";
-					$lines[] = "⚠️ Differs from the Sangoma default (`{$default}`).";
+					$lines[] = "😬 Primary is third-party. Sangoma default is `{$default}`.";
 				}
 
 				$active = $data['active_categories'] ?? [];
@@ -1039,35 +1040,30 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 					$lines[] = "⚠️ Disabled on this box: `" . implode('`, `', array_map([$this, 'sanitizeForChat'], $missing)) . "`";
 				}
 				if (empty($data['commercial_enabled'])) {
-					$lines[] = "ℹ️ Commercial category is **off** — you won't see paid-module updates until it's re-enabled.";
+					$lines[] = "ℹ️ Commercial category is **off**. You won't see paid-module updates until it's re-enabled.";
 				}
 
 				$needsRestore = empty($data['matches_default']) || empty($data['commercial_enabled']);
 				if ($needsRestore) {
 					$lines[] = "";
-					$lines[] = "{{cmd:restore Sangoma mirrors|🔁 Restore Sangoma mirror}}";
+					$lines[] = "{{cmd:restore Sangoma mirrors|☠️ Avoid walking the plank: restore Sangoma mirror}}";
 				}
 				return implode("\n", $lines);
 			}
 
 			case 'fm_module_mirror_restore_sangoma': {
 				if (!empty($data['no_op'])) {
-					return "✅ " . ($data['message'] ?? 'Nothing to change.');
+					return "🐸 " . ($data['message'] ?? 'Nothing to change.');
 				}
 				if (!empty($data['dry_run'])) {
 					$current = $this->sanitizeForChat($data['current_repo'] ?? '');
 					$proposed = $this->sanitizeForChat($data['proposed_repo'] ?? '');
-					$lines = ["**Restore Sangoma Mirror — Preview**"];
+					$lines = ["**Restore Sangoma Mirror (Preview)**"];
 					if (!empty($data['url_change'])) {
 						$lines[] = "";
 						$lines[] = "MODULE_REPO would change:";
 						$lines[] = "  current: `{$current}`";
 						$lines[] = "  new:     `{$proposed}`";
-						if (($data['mode'] ?? '') === 'ensure_primary') {
-							$lines[] = "  mode: `ensure_primary` (Sangoma URLs primary, any third-party URLs kept as fallback)";
-						} else {
-							$lines[] = "  mode: `replace_all` (third-party URLs will be dropped)";
-						}
 					}
 					if (!empty($data['enable_categories'])) {
 						$cats = array_map([$this, 'sanitizeForChat'], $data['enable_categories']);

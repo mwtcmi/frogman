@@ -28,16 +28,16 @@ class Reload extends AbstractTool {
 		}
 		// Only require confirmation if there are active calls
 		if ($activeCalls > 0 && !$confirm) {
-			return ['dry_run' => true, 'message' => "There are {$activeCalls} active call(s). Would reload config — this may briefly disrupt calls.", 'active_calls' => $activeCalls];
+			return ['dry_run' => true, 'message' => "There are {$activeCalls} active call(s). Would reload config. This may briefly disrupt calls.", 'active_calls' => $activeCalls];
 		}
 		$res = do_reload();
 		// fwconsole reload (called by do_reload) clears need_reload itself on success — no manual UPDATE needed.
 		$lines = [
-			'🐸 Hopped to it — new configuration is live.',
+			'🐸 Hopped to it. New configuration is live.',
 			'✅ Reloaded. Asterisk has the new config; calls flowing on the new rules.',
 			'✅ Configuration applied. We\'re live.',
-			'🐸 Tango handled the reload — new rules are live.',
-			'✅ Reloaded — the PBX is running the new config now.',
+			'🐸 Tango handled the reload. New rules are live.',
+			'✅ Reloaded. The PBX is running the new config now.',
 		];
 		$msg = $lines[array_rand($lines)];
 		return ['dry_run' => false, 'message' => $msg, 'active_calls_at_reload' => $activeCalls, 'result' => $res];
