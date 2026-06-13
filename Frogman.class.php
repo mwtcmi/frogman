@@ -319,6 +319,148 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 		return str_replace(['`', '{{', '['], ["'", '{ {', '('], $value);
 	}
 
+	private function appendPcapActionSeparator(&$lines) {
+		if (!empty($lines) && end($lines) !== '') {
+			$lines[] = "";
+		}
+	}	
+
+	private function appendPcapSummaryActions(&$lines, $item, $section = null, $callRef = null, $path = null, $callId = null, $indent = '  ') {
+		if (!is_array($item)) return;
+		$id = $item['id'] ?? null;
+		if (!is_string($id) || $id === '' || !is_string($section) || $section === '') return;
+		if (!is_string($path) || $path === '') return;
+		$hasSimplified = !empty($item['simplified']);
+		$hasReExplained = !empty($item['re_explained']);
+		$hasEvidence = !empty($item['evidence_text']) && is_array($item['evidence_text']);
+		if (!$hasSimplified && !$hasReExplained && !$hasEvidence) return;
+		if (!preg_match('/^[a-z0-9_]+$/i', $section) || !preg_match('/^[a-z0-9_:-]+$/i', $id)) return;
+		if (!$this->pcapCanRenderCommandValue($path)) return;
+		$target = "{$section} {$id}";
+		if ($callRef !== null && preg_match('/^[a-f0-9]{12}$/i', (string)$callRef)) $target .= " call " . $callRef;
+		$target .= " path " . $this->pcapCommandValue($path);
+		if (is_string($callId) && $callId !== '') $target .= " call_id " . $this->pcapCommandValue($callId);
+		$actions = [];
+		if ($hasSimplified) $actions[] = "{{cmd:pcap action simplify {$target}|Simplify}}";
+		if ($hasReExplained) $actions[] = "{{cmd:pcap action explain {$target}|Explain}}";
+		if ($hasEvidence) $actions[] = "{{cmd:pcap action evidence {$target}|Evidence}}";
+		if (!empty($actions)) {
+			$this->appendPcapActionSeparator($lines);
+			$lines[] = "{$indent}Actions: " . implode(' · ', $actions);
+		}
+	}
+
+	private function appendPcapSummaryBlockActions(&$lines, $section = null, $callRef = null, $path = null, $callId = null, $indent = '  ') {
+		if (!is_string($section) || $section === '' || !preg_match('/^[a-z0-9_]+$/i', $section)) return;
+		if (!is_string($path) || $path === '') return;
+		if (!$this->pcapCanRenderCommandValue($path)) return;
+		$target = "{$section} block";
+		if ($callRef !== null && preg_match('/^[a-f0-9]{12}$/i', (string)$callRef)) $target .= " call " . $callRef;
+		$target .= " path " . $this->pcapCommandValue($path);
+		if (is_string($callId) && $callId !== '') $target .= " call_id " . $this->pcapCommandValue($callId);
+		$actions = [
+			"{{cmd:pcap action simplify {$target}|Simplify}}",
+			"{{cmd:pcap action explain {$target}|Explain}}",
+			"{{cmd:pcap action evidence {$target}|Evidence}}",
+		];
+		$this->appendPcapActionSeparator($lines);
+		$lines[] = "{$indent}Actions: " . implode(' · ', $actions);
+	}
+
+	private function appendPcapActionViewActions(&$lines, $data, $indent = '') {
+		$available = $data['available_actions'] ?? [];
+		if (empty($available) || !is_array($available)) return;
+		$section = $data['section'] ?? null;
+		$id = $data['item_id'] ?? null;
+		$path = $data['path'] ?? null;
+		if (!is_string($section) || !preg_match('/^[a-z0-9_]+$/i', $section)) return;
+		if (!is_string($id) || !preg_match('/^[a-z0-9_:-]+$/i', $id)) return;
+		if (!is_string($path) || $path === '') return;
+		if (!$this->pcapCanRenderCommandValue($path)) return;
+
+		$target = "{$section} {$id}";
+		if (!empty($data['call_ref']) && preg_match('/^[a-f0-9]{12}$/i', (string)$data['call_ref'])) {
+			$target .= " call " . strtolower((string)$data['call_ref']);
+		} elseif (isset($data['call_index']) && $data['call_index'] !== null && (int)$data['call_index'] >= 0) {
+			$target .= " call " . (int)$data['call_index'];
+		}
+		$target .= " path " . $this->pcapCommandValue($path);
+		if (!empty($data['call_id']) && is_string($data['call_id'])) {
+			$target .= " call_id " . $this->pcapCommandValue($data['call_id']);
+		}
+
+		$commandNames = [
+			'simplify' => 'simplify',
+			'explain' => 'explain',
+			're_explain' => 'explain',
+			'evidence' => 'evidence',
+			'show_evidence' => 'evidence',
+		];
+		$actions = [];
+		foreach ($available as $action => $label) {
+			if (empty($commandNames[$action])) continue;
+			$label = $this->sanitizeForChat($label);
+			if ($label === '') continue;
+			$actions[] = "{{cmd:pcap action {$commandNames[$action]} {$target}|{$label}}}";
+		}
+		if (!empty($actions)) {
+			$this->appendPcapActionSeparator($lines);
+			$lines[] = "{$indent}Actions: " . implode(' · ', $actions);
+		}
+	}
+
+	private function appendPcapActionFocusContext(&$lines, $data) {
+		$context = $data['focus_context'] ?? null;
+		if (is_array($context)) {
+			$label = isset($context['label']) && is_string($context['label']) ? $this->sanitizeForChat($context['label']) : '';
+			$friendly = isset($context['friendly']) && is_string($context['friendly']) ? $this->sanitizeForChat($context['friendly']) : '';
+			$callId = isset($context['call_id']) && is_string($context['call_id']) ? $this->sanitizeForChat($context['call_id']) : '';
+			if ($label !== '') $lines[] = "Focused item: {$label}";
+			if ($friendly !== '') $lines[] = "**{$friendly}**";
+			if ($callId !== '') $lines[] = "Call-ID: `{$callId}`";
+			if ($label !== '' || $friendly !== '' || $callId !== '') return;
+		}
+		if (($data['section'] ?? '') === 'response' && ($data['item_id'] ?? '') === 'block') {
+			$lines[] = "Scope: Full PCAP response";
+		}
+	}
+
+	private function pcapCallRef($callId) {
+		$callId = (string)$callId;
+		return $callId === '' ? null : substr(sha1($callId), 0, 12);
+	}
+
+	private function formatPcapFocusDuration($durationMs) {
+		$durationMs = max(0, (int)$durationMs);
+		if ($durationMs < 1000) return $durationMs . 'ms';
+		$seconds = $durationMs / 1000;
+		if ($seconds < 10) return rtrim(rtrim(number_format($seconds, 2, '.', ''), '0'), '.') . 's';
+		return rtrim(rtrim(number_format($seconds, 1, '.', ''), '0'), '.') . 's';
+	}
+
+	private function pcapPluralWord($count, $singular, $plural = null) {
+		return ((int)$count === 1) ? $singular : ($plural ?? $singular . 's');
+	}
+
+	private function pcapWarningText($warning, $focusedCallView = false) {
+		$warning = (string)$warning;
+		if ($focusedCallView && preg_match('/^TCP reassembly exceeded global (\d+) MiB safety cap; additional TCP payloads skipped$/', $warning, $m)) {
+			return 'Capture warning: `TCP reassembly elsewhere in this capture exceeded the global ' . (int)$m[1] . ' MiB safety cap; additional TCP payloads were skipped.`';
+		}
+		$label = $focusedCallView ? 'Capture warning' : 'Warning';
+		return $label . ': `' . $this->sanitizeForChat($warning) . '`';
+	}
+
+	private function pcapCommandValue($value) {
+		$value = preg_replace('/[\x00-\x1F\x7F]/', '', (string)$value);
+		return str_replace(['|', '}}', '{{'], ['/', '} }', '{ {'], $value);
+	}
+
+	private function pcapCanRenderCommandValue($value) {
+		$value = (string)$value;
+		return !preg_match('/[\x00-\x1F\x7F]|\||\{\{|\}\}/', $value);
+	}
+
 	/**
 	 * Map a severity label to a visual icon for chat rendering.
 	 * Used by the fm_audit_* formatter cases.
@@ -1804,6 +1946,357 @@ class Frogman extends \FreePBX_Helpers implements \BMO {
 				// status check
 				$running = $d['running'] ? 'Yes' : 'No';
 				return "**SIP Trace Status:** Running: {$running} | Captured: {$d['capture_size_bytes']} bytes";
+
+			case 'fm_list_pcaps':
+				if (empty($data['captures'])) {
+					return "No packet captures found.\n\nStart one from [Sysadmin → Packet Capture](/admin/config.php?display=sysadmin&view=packetcapture), then run `list pcaps` again.";
+				}
+				$lines = ["**Packet captures** ({$data['count']} found):"];
+				$show = !empty($data['shown']) && (int)$data['shown'] === (int)$data['count']
+					? $data['captures']
+					: array_slice($data['captures'], 0, 3);
+				foreach ($show as $c) {
+					$rawPath = (string)($c['path'] ?? '');
+					$path = $this->sanitizeForChat($rawPath);
+					$name = $this->sanitizeForChat($c['name']);
+					$meta = $this->sanitizeForChat($c['when'] . ' · ' . round($c['size_bytes'] / 1024) . ' KB');
+					$lines[] = "";
+					if ($this->pcapCanRenderCommandValue($rawPath)) {
+						$lines[] = "📄 {{cmd:analyze pcap {$this->pcapCommandValue($rawPath)}|{$name}}}";
+					} else {
+						$lines[] = "📄 `{$name}`";
+						$lines[] = "   Path: `{$path}`";
+					}
+					$lines[] = "   {$meta}";
+				}
+				$remaining = (int)$data['count'] - count($show);
+				if ($remaining > 0) {
+					$lines[] = "  {{cmd:list pcaps all|Show {$remaining} more}}";
+				}
+				return implode("\n", $lines);
+
+			case 'fm_analyze_pcap':
+				if (($data['mode'] ?? '') === 'summary_action') {
+					if (($data['status'] ?? '') !== 'ok') {
+						return $this->sanitizeForChat($data['message'] ?? 'PCAP action could not be resolved.');
+					}
+					$result = $data['result'] ?? [];
+					$title = $this->sanitizeForChat($result['title'] ?? 'PCAP Action');
+					$confidence = !empty($data['confidence']) ? ' · confidence `' . $this->sanitizeForChat($data['confidence']) . '`' : '';
+					$lines = ["**{$title}**{$confidence}"];
+					$this->appendPcapActionFocusContext($lines, $data);
+					if (($result['kind'] ?? '') === 'evidence') {
+						$items = $result['items'] ?? [];
+						if (empty($items)) {
+							$lines[] = "No compact evidence text is available for this item.";
+						} else {
+							foreach (array_slice($items, 0, 8) as $evidenceLine) {
+								if ($evidenceLine !== '') $lines[] = "- `" . $this->sanitizeForChat($evidenceLine) . "`";
+							}
+						}
+						if (!empty($result['refs'])) {
+							$refs = array_map([$this, 'sanitizeForChat'], array_slice($result['refs'], 0, 8));
+							$lines[] = "Internal refs: `" . implode('` `', $refs) . "`";
+						}
+					} else {
+						$text = (string)($result['text'] ?? '');
+						if ($text === '') {
+							$lines[] = 'No follow-up text is available for this item.';
+						} else {
+							foreach (explode("\n", $text) as $textLine) {
+								$textLine = $this->sanitizeForChat($textLine);
+								$lines[] = $textLine;
+							}
+						}
+					}
+					$this->appendPcapActionViewActions($lines, $data);
+					return implode("\n", $lines);
+				}
+				if (!empty($data['unsupported'])) {
+					$reason = $this->sanitizeForChat($data['reason'] ?? 'unsupported');
+					$hint = $this->sanitizeForChat($data['hint'] ?? '');
+					return "**PCAP analysis unsupported** — `{$reason}`" . ($hint !== '' ? "\n`{$hint}`" : '');
+				}
+				$pcapActionPath = $data['path'] ?? '';
+				$pcapActionCallId = (!empty($data['call_id']) && is_string($data['call_id'])) ? $data['call_id'] : null;
+				if ($pcapActionCallId === null && !empty($data['calls']) && count($data['calls']) === 1 && !empty($data['calls'][0]['call_id'])) {
+					$pcapActionCallId = $data['calls'][0]['call_id'];
+				}
+				$unparsed = (int)($data['unparsed_sip_message_count'] ?? 0);
+				$unparsedText = $unparsed > 0 ? ", {$unparsed} SIP-like " . $this->pcapPluralWord($unparsed, 'message') . " unparsed" : "";
+				$sipTransactionCount = (int)($data['analysis']['sip_transaction_count'] ?? $data['call_count'] ?? 0);
+				$inviteCallFlowCount = (int)($data['analysis']['invite_call_flow_count'] ?? ($data['analysis']['evidence_highlights']['invite_call_flow_count'] ?? 0));
+				$sipMessageCount = (int)($data['sip_message_count'] ?? 0);
+				$lines = ["**PCAP SIP ladders** — {$sipMessageCount} SIP " . $this->pcapPluralWord($sipMessageCount, 'message') . " across {$sipTransactionCount} SIP " . $this->pcapPluralWord($sipTransactionCount, 'transaction') . ", including {$inviteCallFlowCount} INVITE " . $this->pcapPluralWord($inviteCallFlowCount, 'call flow') . "{$unparsedText}"];
+				if (!empty($data['analysis']['outcome_counts'])) {
+					$parts = [];
+					foreach ($data['analysis']['outcome_counts'] as $outcome => $count) {
+						$parts[] = $this->sanitizeForChat($outcome) . ': ' . (int)$count;
+					}
+					$lines[] = "Outcomes: `" . implode('` `', $parts) . "`";
+				}
+				if (!empty($data['analysis']['transport_counts'])) {
+					$parts = [];
+					foreach ($data['analysis']['transport_counts'] as $transport => $count) {
+						$parts[] = $this->sanitizeForChat($transport) . ': ' . (int)$count;
+					}
+					$lines[] = "Transports: `" . implode('` `', $parts) . "`";
+				}
+				if (!empty($data['analysis']['final_status_counts'])) {
+					$parts = [];
+					foreach ($data['analysis']['final_status_counts'] as $status) {
+						$parts[] = (int)$status['code'] . ' ' . $this->sanitizeForChat($status['reason'] ?? '') . ': ' . (int)$status['count'];
+					}
+					$lines[] = "Final statuses: `" . implode('` `', array_slice($parts, 0, 8)) . "`";
+				}
+				if (!empty($data['analysis']['observation_counts'])) {
+					$parts = [];
+					foreach ($data['analysis']['observation_counts'] as $obs => $count) {
+						$parts[] = $this->sanitizeForChat($obs) . ': ' . (int)$count;
+					}
+					$lines[] = "Observations: `" . implode('` `', array_slice($parts, 0, 8)) . "`";
+				}
+				if (!empty($data['analysis']['top_calls']) && ($data['call_count'] ?? 0) > 1) {
+					$lines[] = "";
+					$lines[] = "Call picker";
+					$callRows = [];
+					$otherRows = [];
+					foreach ($data['analysis']['top_calls'] as $idx => $top) {
+						$topId = $this->sanitizeForChat($top['call_id'] ?? '');
+						$outcome = $this->sanitizeForChat($top['outcome'] ?? 'unknown');
+						$outcomeLabel = ucwords(str_replace('_', ' ', $outcome));
+						if (($top['outcome'] ?? '') === 'cancelled'
+							&& !empty($top['observations'])
+							&& is_array($top['observations'])
+							&& in_array('cancelled_before_answer', $top['observations'], true)
+						) {
+							$outcomeLabel = 'Cancelled before answer';
+						}
+						$isInvite = !empty($top['is_invite_call_flow']);
+						$method = $this->sanitizeForChat($top['primary_method'] ?? '');
+						$typeLabel = $isInvite ? '' : $method;
+						$msgCount = (int)($top['message_count'] ?? 0);
+						$messageLabel = $msgCount === 1 ? 'message' : 'messages';
+						$duration = $this->formatPcapFocusDuration((int)($top['duration_ms'] ?? 0));
+						$final = '';
+						if (!empty($top['final_status'])) {
+							$final = ', final ' . (int)$top['final_status']['code'];
+							$reason = $this->sanitizeForChat($top['final_status']['reason'] ?? '');
+							if ($reason !== '') $final .= ' ' . $reason;
+						}
+						$label = trim($outcomeLabel . ' ' . $typeLabel) . " — {$duration}, {$msgCount} {$messageLabel}{$final}";
+						$rawTopId = $top['call_id'] ?? '';
+						if (!empty($data['path']) && $this->pcapCanRenderCommandValue($data['path']) && is_string($rawTopId) && $rawTopId !== '') {
+							$focusPath = $this->pcapCommandValue($data['path']);
+							$focusCallId = $this->pcapCommandValue($rawTopId);
+							$primary = "{{cmd:analyze pcap {$focusPath} call_id {$focusCallId}|{$label}}}";
+						} else {
+							$primary = $label;
+						}
+						$friendly = isset($top['friendly']) && is_string($top['friendly']) ? $this->sanitizeForChat($top['friendly']) : '';
+						if ($isInvite) {
+							$callRows[] = [$primary, $topId, $friendly];
+						} else {
+							$otherRows[] = [$primary, $topId, $friendly];
+						}
+					}
+					if (!empty($callRows)) {
+						$lines[] = "";
+						$lines[] = "📞 Calls found";
+						$num = 0;
+						foreach ($callRows as $row) {
+							$num++;
+							$lines[] = "{$num}. {$row[0]}";
+							$lines[] = "   Call-ID: `{$row[1]}`";
+							if (!empty($row[2])) $lines[] = "   **{$row[2]}**";
+						}
+					} else {
+						$lines[] = "";
+						$lines[] = "📞 Calls found";
+						$lines[] = "None. No INVITE call flows were decoded in this capture.";
+					}
+					if (!empty($otherRows)) {
+						$lines[] = "";
+						$lines[] = "⚙️ Other SIP transactions";
+						$num = 0;
+						foreach ($otherRows as $row) {
+							$num++;
+							$lines[] = "{$num}. {$row[0]}";
+							$lines[] = "   Call-ID: `{$row[1]}`";
+							if (!empty($row[2])) $lines[] = "   **{$row[2]}**";
+						}
+					}
+					if ($inviteCallFlowCount > count($callRows)) {
+						$lines[] = "";
+						$lines[] = "Showing " . count($callRows) . " of {$inviteCallFlowCount} call " . $this->pcapPluralWord($inviteCallFlowCount, 'candidate') . ". Re-run with call_id to focus one ladder.";
+					}
+				}
+				if (!empty($data['truncated'])) {
+					$lines[] = "`Output was capped; use call_id or lower limits to narrow the result.`";
+				}
+				if (!empty($data['warnings'])) {
+					foreach (array_slice($data['warnings'], 0, 3) as $warning) {
+						$lines[] = "  " . $this->pcapWarningText($warning, !empty($data['call_id']));
+					}
+				}
+				$displayedCalls = array_slice($data['calls'] ?? [], 0, 5);
+				if (!empty($displayedCalls)) {
+					$lines[] = "";
+					$lines[] = "Detailed SIP analysis";
+				}
+				foreach ($displayedCalls as $call) {
+					$callId = $this->sanitizeForChat($call['call_id'] ?? '');
+					$duration = (int)($call['duration_ms'] ?? 0);
+					$count = (int)($call['message_count'] ?? 0);
+					$outcome = !empty($call['summary']['outcome']) ? ' — `' . $this->sanitizeForChat($call['summary']['outcome']) . '`' : '';
+					$lines[] = "";
+					$lines[] = "Call-ID `{$callId}`{$outcome} — {$count} " . $this->pcapPluralWord($count, 'message') . ", {$duration}ms";
+					if (!empty($call['summary'])) {
+						$summaryParts = [];
+						if (!empty($call['summary']['from'])) {
+							$summaryParts[] = "from " . $this->sanitizeForChat($call['summary']['from']);
+						}
+						if (!empty($call['summary']['to'])) {
+							$summaryParts[] = "to " . $this->sanitizeForChat($call['summary']['to']);
+						}
+						if (!empty($call['summary']['invite_final_status'])) {
+							$code = (int)$call['summary']['invite_final_status']['code'];
+							$reasonText = $this->sanitizeForChat($call['summary']['invite_final_status']['reason'] ?? '');
+							$summaryParts[] = "INVITE final {$code} {$reasonText}";
+						} elseif (!empty($call['summary']['final_status'])) {
+							$code = (int)$call['summary']['final_status']['code'];
+							$reasonText = $this->sanitizeForChat($call['summary']['final_status']['reason'] ?? '');
+							$methodText = $this->sanitizeForChat($call['summary']['final_status']['cseq_method'] ?? '');
+							$summaryParts[] = trim("final {$code} {$reasonText} {$methodText}");
+						}
+						if (!empty($call['summary']['release_reason'])) {
+							$summaryParts[] = "reason " . $this->sanitizeForChat($call['summary']['release_reason']);
+						}
+						if (!empty($call['summary']['observations'])) {
+							$summaryParts[] = "obs " . implode(', ', array_map([$this, 'sanitizeForChat'], array_slice($call['summary']['observations'], 0, 4)));
+						}
+						if (!empty($call['summary']['retransmissions'])) {
+							$summaryParts[] = "retrans " . (int)$call['summary']['retransmissions'];
+						}
+						if (!empty($call['summary']['largest_gap_ms'])) {
+							$summaryParts[] = "largest gap " . (int)$call['summary']['largest_gap_ms'] . "ms";
+						}
+						if (!empty($summaryParts)) {
+							$lines[] = "  Summary: `" . implode('` `', $summaryParts) . "`";
+						}
+						if (!empty($call['summary']['rtp'])) {
+							$rtp = $call['summary']['rtp'];
+							$status = $this->sanitizeForChat($rtp['status'] ?? 'unknown');
+							$confidence = $this->sanitizeForChat($rtp['confidence'] ?? 'low');
+							$streamCount = count($rtp['streams'] ?? []);
+							$rtcp = !empty($rtp['rtcp_seen']) ? ', RTCP seen' : '';
+							$hasSeqNotes = !empty($rtp['sequence_notes']);
+							$lossSuffix = $hasSeqNotes ? '% on estimable streams' : '%';
+							$loss = isset($rtp['sequence_gap_estimate_percent']) && $rtp['sequence_gap_estimate_percent'] !== null ? ', seq gaps ~' . $this->sanitizeForChat((string)$rtp['sequence_gap_estimate_percent']) . $lossSuffix : '';
+							$seqNote = !empty($rtp['sequence_notes']) ? ', ' . implode(', ', array_map([$this, 'sanitizeForChat'], $rtp['sequence_notes'])) : '';
+							$lines[] = "  RTP: `{$status}`, confidence `{$confidence}`, {$streamCount} " . $this->pcapPluralWord($streamCount, 'stream') . "{$rtcp}{$loss}{$seqNote}";
+						}
+						if (!empty($call['summary']['diagnostic_hints'])) {
+							foreach (array_slice($call['summary']['diagnostic_hints'], 0, 3) as $hint) {
+								if (is_array($hint)) {
+									$text = $this->sanitizeForChat($hint['text'] ?? '');
+									$confidence = $this->sanitizeForChat($hint['confidence'] ?? 'low');
+									$obs = !empty($hint['observations']) ? ' obs ' . implode(', ', array_map([$this, 'sanitizeForChat'], $hint['observations'])) : '';
+									$lines[] = "  Hint ({$confidence}): `{$text}{$obs}`";
+								} else {
+									$lines[] = "  Hint: `" . $this->sanitizeForChat($hint) . "`";
+								}
+							}
+						}
+						if (!empty($call['summary']['media'])) {
+							$mediaLines = [];
+							foreach (array_slice($call['summary']['media'], 0, 2) as $media) {
+								$mediaParts = [];
+								if (!empty($media['connection'])) {
+									$mediaParts[] = 'c=' . $this->sanitizeForChat($media['connection']);
+								}
+								foreach (array_slice($media['media'] ?? [], 0, 3) as $mline) {
+									$mediaParts[] = 'm=' . $this->sanitizeForChat($mline);
+								}
+								if (!empty($mediaParts)) $mediaLines[] = implode(' | ', $mediaParts);
+							}
+							if (!empty($mediaLines)) {
+								$lines[] = "  Media: `" . implode('` `', $mediaLines) . "`";
+							}
+						}
+					}
+					foreach (array_slice($call['messages'] ?? [], 0, 20) as $msg) {
+						$t = isset($msg['t_ms']) ? '+' . (int)$msg['t_ms'] . 'ms' : '';
+						$src = $this->sanitizeForChat($msg['src'] ?? '');
+						$dst = $this->sanitizeForChat($msg['dst'] ?? '');
+						$line = $this->sanitizeForChat($msg['line'] ?? '');
+						$cseq = !empty($msg['cseq']) ? " CSeq `" . $this->sanitizeForChat($msg['cseq']) . "`" : '';
+						$reason = !empty($msg['reason']) ? " Reason `" . $this->sanitizeForChat($msg['reason']) . "`" : '';
+						$lines[] = "  {$t} `{$src}` -> `{$dst}` `{$line}`{$cseq}{$reason}";
+						if (!empty($msg['sdp'])) {
+							$sdpParts = [];
+							if (!empty($msg['sdp']['connection'])) {
+								$sdpParts[] = 'c=' . $this->sanitizeForChat($msg['sdp']['connection']);
+							}
+							foreach (array_slice($msg['sdp']['media'] ?? [], 0, 3) as $media) {
+								$sdpParts[] = 'm=' . $this->sanitizeForChat($media);
+							}
+							if (!empty($sdpParts)) {
+								$lines[] = "      SDP `" . implode('` `', $sdpParts) . "`";
+							}
+						}
+					}
+					if ($count > 20) {
+						$remainingMessages = $count - 20;
+						$lines[] = "  ... and {$remainingMessages} more " . $this->pcapPluralWord($remainingMessages, 'message') . " in this call";
+					}
+				}
+				if (($data['call_count'] ?? 0) > 5) {
+					$lines[] = "";
+					$remainingTransactions = (int)$data['call_count'] - 5;
+					$lines[] = "... and {$remainingTransactions} more SIP " . $this->pcapPluralWord($remainingTransactions, 'transaction') . ". Re-run with `call_id` to focus one ladder.";
+				}
+				if (!empty($data['analysis']['reader_summary'])) {
+					$lines[] = "";
+					$lines[] = "**Reader summary**";
+					foreach (array_slice($data['analysis']['reader_summary'], 0, 5) as $summaryLine) {
+						$lines[] = "- " . $this->sanitizeForChat($summaryLine);
+					}
+					if (!empty($data['analysis']['support_summary'])) {
+						$lines[] = "";
+						$lines[] = "**Support summary**";
+						foreach (array_slice($data['analysis']['support_summary'], 0, 4) as $item) {
+							$text = $this->sanitizeForChat(is_array($item) ? ($item['text'] ?? '') : $item);
+							$confidence = is_array($item) ? $this->sanitizeForChat($item['confidence'] ?? 'low') : 'low';
+							if ($text !== '') {
+								$lines[] = "- ({$confidence}) {$text}";
+							}
+						}
+					}
+					if (!empty($data['analysis']['likely_next_checks'])) {
+						$lines[] = "";
+						$lines[] = "**Likely next checks**";
+						foreach (array_slice($data['analysis']['likely_next_checks'], 0, 3) as $item) {
+							$text = $this->sanitizeForChat(is_array($item) ? ($item['text'] ?? '') : $item);
+							$confidence = is_array($item) ? $this->sanitizeForChat($item['confidence'] ?? 'low') : 'low';
+							if ($text !== '') {
+								$lines[] = "- ({$confidence}) {$text}";
+							}
+						}
+					}
+					if (!empty($data['analysis']['confidence_notes'])) {
+						$lines[] = "";
+						$lines[] = "**Confidence notes**";
+						foreach (array_slice($data['analysis']['confidence_notes'], 0, 3) as $item) {
+							$text = $this->sanitizeForChat(is_array($item) ? ($item['text'] ?? '') : $item);
+							if ($text !== '') {
+								$lines[] = "- {$text}";
+							}
+						}
+					}
+				}
+				$this->appendPcapSummaryBlockActions($lines, 'response', null, $pcapActionPath, $pcapActionCallId, '');
+				return implode("\n", $lines);
 
 			case 'fm_list_filestores':
 				$locs = $data['locations']['locations'] ?? [];
