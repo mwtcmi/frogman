@@ -94,12 +94,19 @@ function freepbx_request($url, $command, $postData = null) {
     return $decoded;
 }
 
-// Fetch the tool catalog and convert to MCP tool format
+// Fetch the tool catalog and convert to MCP tool format.
+// Returns ['tools' => [...]] on success or ['error' => string] on failure. Callers must
+// not cache a failure — a backend that recovers should be picked up on the next request.
 function get_mcp_tools($url) {
     $catalog = freepbx_request($url, 'catalog');
-    if (isset($catalog['error']) || $catalog['status'] !== 'success') {
-        mcp_log("Failed to fetch catalog: " . json_encode($catalog));
-        return [];
+    if (isset($catalog['error'])) {
+        return ['error' => $catalog['error']];
+    }
+    if (($catalog['status'] ?? '') !== 'success') {
+        return ['error' => 'catalog request returned ' . json_encode($catalog)];
+    }
+    if (!is_array($catalog['tools'] ?? null)) {
+        return ['error' => 'catalog response contained no tool list'];
     }
 
     $tools = [];
@@ -118,7 +125,7 @@ function get_mcp_tools($url) {
             ],
         ];
     }
-    return $tools;
+    return ['tools' => $tools];
 }
 
 // Execute a tool via the ajax endpoint
@@ -248,7 +255,15 @@ while (true) {
 
         case 'tools/list':
             if ($toolCache === null) {
-                $toolCache = get_mcp_tools($FREEPBX_URL);
+                $catalog = get_mcp_tools($FREEPBX_URL);
+                if (isset($catalog['error'])) {
+                    // Leave $toolCache null so the next tools/list retries rather than
+                    // serving an empty catalog for the life of the process.
+                    mcp_log("Catalog fetch failed: {$catalog['error']}");
+                    send_error($id, -32603, "Cannot reach the Frogman tool catalog at {$FREEPBX_URL} — {$catalog['error']}");
+                    break;
+                }
+                $toolCache = $catalog['tools'];
             }
             send_response($id, [
                 'tools' => $toolCache,
