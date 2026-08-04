@@ -79,12 +79,59 @@ $(function() {
 		return text;
 	}
 
+	function afterLayout(fn) {
+		if (window.requestAnimationFrame) {
+			window.requestAnimationFrame(function() {
+				window.requestAnimationFrame(fn);
+			});
+		} else {
+			setTimeout(fn, 0);
+		}
+	}
+
+	function botScrollState() {
+		var state = {cancelled: false};
+		state.cancel = function() {
+			state.cancelled = true;
+			state.cleanup();
+		};
+		state.cleanup = function() {
+			$msgs.off('wheel touchstart mousedown keydown', state.cancel);
+		};
+		$msgs.one('wheel touchstart mousedown keydown', state.cancel);
+		return state;
+	}
+
+	function finishBotMessage(message, state) {
+		if (!message || !message.scrollIntoView) {
+			if (state) state.cleanup();
+			return;
+		}
+		afterLayout(function() {
+			if (!state || !state.cancelled) {
+				message.scrollIntoView({block: 'start', behavior: 'smooth'});
+			}
+			if (state) state.cleanup();
+		});
+	}
+
 	function addMessage(text, type) {
 		var time = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
 		var bubble = '<div class="oc-msg oc-msg-' + type + '">' +
 			'<div><div class="oc-msg-bubble">' + formatMarkdown(text) + '</div>' +
 			'<div class="oc-msg-time">' + time + '</div></div></div>';
 		$msgs.append(bubble);
+		var newMessage = $msgs.children().last()[0];
+		var isBotMessage = type === 'bot' && newMessage;
+		var scrollState = isBotMessage ? botScrollState() : null;
+		var mermaidNodes = isBotMessage && typeof mermaid !== 'undefined'
+			? Array.prototype.slice.call(newMessage.querySelectorAll('.oc-mermaid'))
+			: [];
+		var pendingMermaid = mermaidNodes.length;
+		var finishMermaid = function() {
+			pendingMermaid--;
+			if (pendingMermaid === 0) finishBotMessage(newMessage, scrollState);
+		};
 		// Render any Mermaid diagrams
 		$msgs.find('.oc-mermaid').each(function() {
 			var el = $(this);
@@ -92,18 +139,26 @@ $(function() {
 				el.data('rendered', true);
 				var id = el.attr('id') + '-svg';
 				var code = decodeURIComponent(escape(atob(el.data('graph'))));
+				var belongsToNewMessage = mermaidNodes.indexOf(el[0]) !== -1;
 				try {
 					mermaid.render(id, code).then(function(result) {
 						el.html(result.svg).show();
+						if (belongsToNewMessage) finishMermaid();
 					}).catch(function(err) {
 						el.text('Diagram error: ' + err.message).show();
+						if (belongsToNewMessage) finishMermaid();
 					});
 				} catch(e) {
 					el.text('Diagram error: ' + e.message).show();
+					if (belongsToNewMessage) finishMermaid();
 				}
 			}
 		});
-		$msgs.scrollTop($msgs[0].scrollHeight);
+		if (isBotMessage) {
+			if (pendingMermaid === 0) finishBotMessage(newMessage, scrollState);
+		} else {
+			$msgs.scrollTop($msgs[0].scrollHeight);
+		}
 	}
 
 	function sendMessage(text) {
