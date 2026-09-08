@@ -38,14 +38,20 @@ class SaveQuery extends AbstractTool {
 		$paramSpec = $params['param_spec'] ?? '{}';
 
 		// Validate the GraphQL query parses
+		$apiInfo = \module_functions::create()->getinfo('api', MODULE_STATUS_ENABLED);
+		$apiVersion = $apiInfo['api']['dbversion'] ?? null;
+		if (!$apiVersion || version_compare($apiVersion, '17.0.1', '<')) {
+			return ['error' => 'Saved GraphQL queries require the optional FreePBX API module 17.0.1+ to be installed and enabled.'];
+		}
 		$autoloadPath = '/var/www/html/admin/modules/api/vendor/autoload.php';
-		if (file_exists($autoloadPath)) {
-			require_once $autoloadPath;
-			try {
-				\GraphQL\Language\Parser::parse($query);
-			} catch (\Exception $e) {
-				throw new \Exception("GraphQL parse error: " . $e->getMessage());
-			}
+		if (!file_exists($autoloadPath)) {
+			return ['error' => 'Saved GraphQL queries require the optional FreePBX API module 17.0.1+ to be installed and enabled.'];
+		}
+		require_once $autoloadPath;
+		try {
+			\GraphQL\Language\Parser::parse($query);
+		} catch (\Exception $e) {
+			throw new \Exception("GraphQL parse error: " . $e->getMessage());
 		}
 
 		// Validate param_spec is valid JSON if provided

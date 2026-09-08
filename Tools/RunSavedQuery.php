@@ -33,6 +33,11 @@ class RunSavedQuery extends AbstractTool {
 	public function execute($params, $context) {
 		$name = $params['name'];
 		$variables = $params['params'] ?? [];
+		$apiInfo = \module_functions::create()->getinfo('api', MODULE_STATUS_ENABLED);
+		$apiVersion = $apiInfo['api']['dbversion'] ?? null;
+		if (!$apiVersion || version_compare($apiVersion, '17.0.1', '<')) {
+			return ['error' => 'Saved GraphQL queries require the optional FreePBX API module 17.0.1+ to be installed and enabled.'];
+		}
 
 		$db = $this->freepbx->Database;
 

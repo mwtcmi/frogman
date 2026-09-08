@@ -1,5 +1,11 @@
 <?php
 if (!defined('FREEPBX_IS_AUTH')) { die('No direct script access allowed'); }
+
+if (version_compare(getversion(), '17.0', '<')) {
+	out(_('Frogman requires FreePBX 17 or later. Installation aborted.'));
+	return false;
+}
+
 // Schema is defined in module.xml <database> blocks.
 // This file is reserved for feature codes, kvstore defaults, or data migrations.
 // Migrations are written to be idempotent so install.php is safe to re-run.

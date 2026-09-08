@@ -117,8 +117,7 @@
 		*1.1.0* Add fm_whos_on_the_phone (212 tools); fix ChatParser OOM from recursive synonym expansion on "create inbound route"; route questions ending with "?" to KB search; security: shell injection fix in FwconsoleCmd, AMI allowlist, input sanitization; tool prefix oc_ → fm_
 		*1.0.0* Initial release: 211 tools, MCP server, web console, CLI chat, knowledge base RAG, call flow visualizer, API token auth
 	]]></changelog>	<depends>
-		<version>17.0.1</version>
-		<module>api ge 17.0.1</module>
+		<version>17.0</version>
 	</depends>
 	<database>
 		<table name="oc_audit_log">
