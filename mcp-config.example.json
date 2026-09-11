@@ -3,13 +3,11 @@
     "frogman": {
       "command": "ssh",
       "args": [
+        "-o",
+        "BatchMode=yes",
         "root@YOUR_FREEPBX_HOST",
-        "php",
-        "/var/www/html/admin/modules/frogman/mcp-server.php"
-      ],
-      "env": {
-        "FROGMAN_FREEPBX_URL": "http://localhost/admin/ajax.php"
-      }
+        "FROGMAN_FREEPBX_URL=http://localhost/admin/ajax.php php /var/www/html/admin/modules/frogman/mcp-server.php"
+      ]
     }
   }
 }

@@ -553,18 +553,64 @@ The MCP server runs as a standalone PHP process and proxies tool calls to the Fr
 ```bash
 # Run directly
 php /var/www/html/admin/modules/frogman/mcp-server.php
+```
 
-# Claude Desktop config (~/.claude/claude_desktop_config.json)
+Claude Desktop config (`~/.claude/claude_desktop_config.json`):
+
+```json
 {
   "mcpServers": {
     "frogman": {
       "command": "ssh",
-      "args": ["root@YOUR_FREEPBX_HOST", "php",
-               "/var/www/html/admin/modules/frogman/mcp-server.php"]
+      "args": [
+        "-o", "BatchMode=yes",
+        "root@YOUR_FREEPBX_HOST",
+        "FROGMAN_FREEPBX_URL=http://localhost/admin/ajax.php php /var/www/html/admin/modules/frogman/mcp-server.php"
+      ]
     }
   }
 }
 ```
+
+#### Things that bite over SSH
+
+**Set `FROGMAN_FREEPBX_URL` inside the remote command, not in an `env` block.** An `env` block in your MCP client config sets the variable on the local `ssh` process. `sshd` won't forward it to the remote PHP unless the server is configured with `AcceptEnv`, so it silently has no effect and the server falls back to its default.
+
+**Check which port serves the admin panel.** The default assumes `/admin` is on port 80. Sangoma-layout installs put the admin control panel on **8080** and reserve port 80 for Let's Encrypt with `DocumentRoot /invalid/folder/name` — every `/admin` request there returns a 403. Check with:
+
+```bash
+grep -o '"acp":{"port":"[0-9]*"' /etc/apache2/ports/ports.conf
+```
+
+If it isn't 80, point the URL at that port instead — e.g. `FROGMAN_FREEPBX_URL=http://localhost:8080/admin/ajax.php`. When the catalog is unreachable, `tools/list` returns a JSON-RPC error naming the URL it tried, so your client will show the reason rather than an empty tool list.
+
+**On Windows, pass `ProgramData` through in an `env` block.** Electron-based MCP clients (Claude Desktop among them) spawn servers with a curated environment that drops `ProgramData`. Windows OpenSSH resolves its system config through a `__PROGRAMDATA__` token, so without that variable `ssh.exe` aborts during startup — exit 255 in under 20ms, **no stderr, no log output, nothing to go on**. The client reports only `Server transport closed unexpectedly`, which reads like a Frogman problem and isn't one.
+
+```json
+{
+  "mcpServers": {
+    "frogman": {
+      "command": "ssh",
+      "args": [
+        "-o", "BatchMode=yes",
+        "-o", "IdentitiesOnly=yes",
+        "-i", "C:/Users/YOU/.ssh/your-key",
+        "root@YOUR_FREEPBX_HOST",
+        "FROGMAN_FREEPBX_URL=http://localhost:8080/admin/ajax.php php /var/www/html/admin/modules/frogman/mcp-server.php"
+      ],
+      "env": {
+        "ProgramData": "C:\\ProgramData",
+        "SystemRoot": "C:\\WINDOWS",
+        "USERPROFILE": "C:\\Users\\YOU"
+      }
+    }
+  }
+}
+```
+
+This is the one case where the `env` block is the right tool — it sets the *local* `ssh` process's environment, which is exactly what `ProgramData` needs. It still won't reach the remote PHP, so `FROGMAN_FREEPBX_URL` stays inline in the remote command.
+
+`BatchMode=yes` is worth keeping on any platform: without it, a key that needs a passphrase makes `ssh` prompt for one on a stdio pipe no human can answer, and the client hangs instead of failing.
 
 #### Other MCP clients
 
@@ -572,7 +618,7 @@ The same SSH-transport config works for any stdio-MCP client — Frogman doesn't
 
 ```
 command: ssh
-args:    root@YOUR_FREEPBX_HOST php /var/www/html/admin/modules/frogman/mcp-server.php
+args:    -o BatchMode=yes root@YOUR_FREEPBX_HOST FROGMAN_FREEPBX_URL=http://localhost/admin/ajax.php php /var/www/html/admin/modules/frogman/mcp-server.php
 ```
 
 Tested with **Claude Desktop**, **Claude Code**, **Cursor**, and **Windsurf**. Any other MCP-compatible client (OpenClaw, Continue, etc.) should work — the protocol is the same.
